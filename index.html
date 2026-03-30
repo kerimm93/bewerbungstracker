@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FIAE Bewerbungs-Quest</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FIAE Quest">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+/* === KERIM APP SYSTEM v2.1 — Dark Theme === */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#1a1a2e; --bg-mid:#16213e; --surface:#1e2a4a; --surface-2:#162038; --surface-3:#243555;
+  --border:#2a4a7f; --border-light:#3a6aaf;
+  --ink:#e8e8f0; --ink-light:#9999bb; --ink-dim:#555577;
+  --gold:#ffb347; --gold-light:#ffd580;
+  --purple:#9b59b6; --purple-light:#c39bd3; --purple-dark:#7d3c98;
+  --green:#2ecc71; --green-dark:#1a8a4a;
+  --red:#e74c3c; --red-dark:#c0392b;
+  --blue:#3498db; --blue-dark:#2176ae;
+  --teal:#1abc9c; --teal-dark:#16a085;
+  --cyan:#00d4ff;
+  --pixel:'Press Start 2P',monospace; --body:'Lato',sans-serif;
+  --fs-content:15px; --fs-label:11px; --fs-btn:13px; --touch-min:36px;
+}
+@media(max-width:639px){:root{--fs-content:16px;--fs-btn:14px;--touch-min:44px;}}
+@media(min-width:640px) and (max-width:1023px){:root{--fs-content:17px;--touch-min:40px;}}
+
+html{font-size:16px;}
+body{
+  font-family:var(--body);background:var(--bg);color:var(--ink);min-height:100vh;
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(155,89,182,.08) 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 20%,rgba(52,152,219,.06) 0%,transparent 50%);
+}
+#app{max-width:900px;margin:0 auto;padding:12px;}
+
+/* === HEADER === */
+.htbox{
+  background:linear-gradient(135deg,#2d1b69,#1a0a4a);
+  border:2px solid var(--purple);box-shadow:0 0 20px rgba(155,89,182,.3);
+  border-radius:6px;padding:10px 20px;text-align:center;margin-bottom:10px;
+  position:relative;
+}
+.htbox h1{font-family:var(--pixel);color:var(--gold);font-size:9px;line-height:1.8;}
+.htbox h1 span{color:var(--purple-light);}
+.htbox .sub{font-family:var(--body);font-weight:300;color:var(--ink-light);font-size:12px;letter-spacing:4px;text-transform:uppercase;margin-top:4px;}
+#hamburger-btn{
+  display:none;position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:1px solid var(--border);border-radius:6px;color:var(--ink-light);
+  padding:6px 10px;cursor:pointer;font-size:18px;
+}
+@media(max-width:767px){#hamburger-btn{display:flex;align-items:center;}}
+
+/* === TAB BAR (Desktop) === */
+.tab-row{
+  display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;
+  background:rgba(0,0,0,.25);border-radius:8px 8px 0 0;padding:4px 4px 0;
+}
+.tab-row::-webkit-scrollbar{display:none;}
+.tab-btn{
+  font-family:var(--body);font-weight:700;font-size:12px;
+  padding:10px 16px;background:transparent;border:none;border-bottom:3px solid transparent;
+  color:var(--ink-light);white-space:nowrap;flex-shrink:0;min-height:var(--touch-min);
+  cursor:pointer;transition:all .15s;
+}
+.tab-btn:hover{color:var(--ink);}
+.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
+@media(max-width:767px){.tab-row{display:none;}}
+
+/* === SIDEBAR (Mobile) === */
+#sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;}
+#sidebar{
+  position:fixed;top:0;left:0;height:100vh;width:280px;
+  background:var(--bg-mid);border-right:1px solid var(--border);
+  z-index:301;transform:translateX(-100%);transition:transform .25s ease;overflow-y:auto;
+}
+.sidebar-close{
+  display:flex;justify-content:flex-end;padding:12px 16px;
+  border-bottom:1px solid var(--border);
+}
+.sidebar-close button{background:none;border:none;color:var(--ink-light);font-size:20px;cursor:pointer;}
+.sidebar-nav-btn{
+  display:flex;align-items:center;gap:12px;width:100%;padding:14px 20px;
+  background:none;border:none;border-left:3px solid transparent;
+  font-family:var(--body);font-weight:600;font-size:15px;color:var(--ink-light);cursor:pointer;
+  transition:all .15s;
+}
+.sidebar-nav-btn:hover{color:var(--ink);background:rgba(255,255,255,.04);}
+.sidebar-nav-btn.active{color:var(--gold);border-left-color:var(--gold);}
+
+/* === PANEL === */
+.panel-wrap{
+  background:var(--surface-2);border:1px solid var(--border);
+  box-shadow:0 4px 24px rgba(0,0,0,.4);padding:16px;min-height:300px;
+  border-radius:0 0 8px 8px;
+}
+.panel{display:none;}
+.panel.active{display:block;animation:fi .15s ease;}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* === CARDS === */
+.qs{
+  background:var(--surface);border:1px solid var(--border);
+  box-shadow:0 2px 12px rgba(0,0,0,.25);padding:14px 16px;
+  margin-bottom:12px;border-radius:8px;
+}
+.qh{
+  font-family:var(--body);font-weight:800;font-size:13px;color:var(--gold);
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+
+/* === BUTTONS === */
+.btn{
+  font-family:var(--body);font-weight:700;font-size:var(--fs-btn);
+  padding:10px 18px;border:none;border-radius:8px;cursor:pointer;
+  min-height:var(--touch-min);box-shadow:0 2px 8px rgba(0,0,0,.3);
+  display:inline-flex;align-items:center;gap:6px;transition:all .15s;
+  text-decoration:none;
+}
+.btn:active{transform:translateY(1px);box-shadow:none;}
+.btn:disabled{opacity:.38;cursor:not-allowed;}
+.btn-q{background:linear-gradient(135deg,var(--gold),#e8960a);color:#1a0a00;}
+.btn-m{background:linear-gradient(135deg,var(--purple),var(--purple-dark));color:#fff;}
+.btn-v{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;}
+.btn-s{background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:#fff;}
+.btn-t{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;}
+.btn-d{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;}
+.btn-w{background:var(--surface-3);border:1px solid var(--border-light);color:var(--ink-light);}
+.btn-sm{font-size:calc(var(--fs-btn) - 2px);padding:7px 13px;min-height:calc(var(--touch-min) - 8px);}
+.btn.copied,.btn.ok{background:linear-gradient(135deg,var(--green),var(--green-dark))!important;color:#fff!important;}
+
+/* === FILTER PILLS === */
+.fp{
+  font-family:var(--body);font-weight:600;font-size:12px;padding:7px 14px;
+  border:1px solid var(--border);border-radius:20px;background:var(--surface);
+  color:var(--ink-light);cursor:pointer;min-height:var(--touch-min);
+  display:inline-flex;align-items:center;transition:all .15s;
+}
+.fp:hover{border-color:var(--purple-light);color:var(--ink);}
+.fp.active{background:var(--purple-dark);border-color:var(--purple);color:#fff;}
+
+/* === INPUTS === */
+input,textarea,select{
+  background:rgba(0,0,0,.25);border:1px solid var(--border);
+  color:var(--ink);font-family:var(--body);font-size:var(--fs-content);
+  padding:10px 14px;min-height:var(--touch-min);border-radius:6px;width:100%;
+}
+input:focus,textarea:focus,select:focus{
+  outline:none;border-color:var(--purple);box-shadow:0 0 0 2px rgba(155,89,182,.2);
+}
+input::placeholder,textarea::placeholder{color:var(--ink-dim);}
+label{
+  font-family:var(--body);font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;margin-top:12px;
+}
+label:first-child{margin-top:0;}
+select{cursor:pointer;}
+textarea{resize:vertical;min-height:80px;}
+
+/* === NOTICES === */
+.notice{
+  background:rgba(255,179,71,.07);border-left:3px solid var(--gold);
+  padding:10px 14px;font-family:var(--body);font-size:13px;
+  color:var(--ink-light);line-height:1.6;border-radius:0 6px 6px 0;margin-bottom:10px;
+}
+.notice.info{background:rgba(52,152,219,.07);border-left-color:var(--blue);}
+.notice.danger{background:rgba(231,76,60,.10);border-left-color:var(--red);}
+.notice.success{background:rgba(46,204,113,.07);border-left-color:var(--green);}
+
+/* === MODALS === */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);
+  z-index:200;display:flex;align-items:center;justify-content:center;padding:12px;
+}
+.modal-bg.hidden{display:none;}
+.modal-box{
+  background:var(--surface-2);border:1px solid var(--border);
+  box-shadow:0 20px 60px rgba(0,0,0,.6);padding:24px;
+  width:min(580px,100%);max-height:90vh;overflow-y:auto;border-radius:12px;
+}
+.modal-title{font-family:var(--body);font-weight:800;font-size:16px;color:var(--gold);margin-bottom:12px;}
+
+/* === TOAST === */
+#toast{
+  position:fixed;bottom:20px;right:20px;
+  background:var(--surface);border:1px solid var(--purple);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px 20px;
+  font-family:var(--body);font-size:13px;font-weight:600;color:var(--gold);
+  transform:translateY(80px);opacity:0;transition:all .2s;
+  z-index:999;border-radius:8px;pointer-events:none;
+}
+#toast.show{transform:translateY(0);opacity:1;}
+
+/* === MAP === */
+.map-wrap{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+#map-canvas{display:block;width:100%;cursor:pointer;}
+.map-popup{
+  position:absolute;display:none;
+  background:var(--surface-2);border:1px solid var(--border-light);border-radius:8px;
+  padding:12px 14px;min-width:210px;max-width:270px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:10;
+}
+.map-popup.vis{display:block;}
+.mp-name{font-family:var(--body);font-weight:800;font-size:13px;color:var(--gold);margin-bottom:5px;}
+.mp-phase{font-size:11px;color:var(--ink-light);margin-bottom:6px;}
+.mp-steps{display:flex;gap:3px;margin-bottom:10px;}
+.mp-step{width:18px;height:8px;border-radius:2px;background:var(--surface-3);}
+.mp-step.done{background:var(--green);}
+.mp-close{position:absolute;top:8px;right:10px;cursor:pointer;font-size:14px;color:var(--ink-light);background:none;border:none;}
+.mp-close:hover{color:var(--red);}
+.map-legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-light);}
+.leg-dot{width:10px;height:10px;border-radius:50%;border:1px solid rgba(255,255,255,.2);flex-shrink:0;}
+
+/* === QUEST OVERVIEW === */
+.quest-overview{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:12px;}
+.qcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;cursor:pointer;transition:border-color .2s,transform .1s;
+}
+.qcard:hover{border-color:var(--gold);transform:translateY(-2px);}
+.qcard.active-quest{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,179,71,.3);}
+.qc-head{background:var(--surface-2);padding:10px 12px;display:flex;align-items:center;gap:8px;}
+.qc-name{flex:1;font-family:var(--body);font-weight:800;font-size:12px;color:var(--ink);line-height:1.4;}
+.qc-region{font-size:10px;color:var(--ink-light);}
+.qc-body{padding:10px 12px;}
+.phase-dots{display:flex;gap:5px;margin-bottom:7px;}
+.pdot{
+  width:16px;height:16px;border-radius:50%;border:1px solid var(--border-light);
+  background:var(--surface-3);font-size:7px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--pixel);color:var(--ink-dim);
+}
+.pdot.done{background:var(--green-dark);border-color:var(--green);color:#fff;}
+.pdot.active{background:rgba(255,179,71,.2);border-color:var(--gold);color:var(--gold);}
+.step-bar{display:flex;gap:2px;}
+.sbar-cell{flex:1;height:5px;border-radius:1px;background:var(--surface-3);}
+.sbar-cell.done{background:var(--green);}
+
+/* === QUEST DETAIL === */
+.quest-detail{display:none;}.quest-detail.vis{display:block;}
+.qd-back{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+.qd-title{font-family:var(--body);font-weight:800;font-size:16px;color:var(--gold);flex:1;}
+.prog-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;}
+.prog-lbl{font-family:var(--body);font-size:12px;font-weight:700;color:var(--ink-light);margin-bottom:6px;display:flex;justify-content:space-between;}
+.prog-lbl span{color:var(--gold);}
+.prog-track{height:10px;background:var(--surface-3);border-radius:5px;overflow:hidden;}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--purple-dark),var(--gold));transition:width .4s;border-radius:5px;}
+
+/* Status strip */
+.ss-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.ss-cell{padding:8px 14px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
+.ss-cell:nth-child(2n){border-right:none;}.ss-cell:nth-last-child(-n+2){border-bottom:none;}
+.ss-key{font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+.ss-val{font-size:12px;color:var(--ink);word-break:break-word;}
+.ss-val.empty{color:var(--ink-dim);font-style:italic;}
+.ss-val.vok{color:var(--green);}
+.ss-val.vwarn{color:var(--gold);}
+.ss-val.vfail{color:var(--red);}
+.addr-row{padding:8px 14px;border-top:1px solid var(--border);}
+.addr-blk{
+  font-size:12px;font-family:monospace;color:var(--ink);background:rgba(0,0,0,.25);
+  border:1px solid var(--border);border-radius:6px;padding:6px 10px;
+  white-space:pre-line;line-height:1.5;margin-top:5px;
+}
+.addr-blk.empty{color:var(--ink-dim);font-style:italic;}
+
+/* Steps */
+.phase-banner{
+  background:var(--surface-3);border:1px solid var(--border-light);border-radius:6px;
+  padding:7px 14px;margin:.9rem 0 .5rem;font-family:var(--body);font-weight:800;
+  font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.qstep{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  margin-bottom:7px;overflow:hidden;transition:border-color .2s;
+}
+.qstep.done{border-color:var(--green-dark);}
+.shead{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;
+  background:var(--surface-2);transition:background .15s;user-select:none;
+}
+.shead:hover{background:var(--surface-3);}
+.sgem{
+  width:28px;height:28px;border-radius:50%;border:2px solid var(--border-light);
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--body);font-weight:800;font-size:11px;cursor:pointer;
+  background:var(--surface-3);color:var(--ink-light);transition:all .15s;
+}
+.sgem:hover{border-color:var(--gold);}
+.sgem.cl{background:var(--green-dark);color:#fff;border-color:var(--green);}
+.sinfo{flex:1;min-width:0;}
+.sname{font-family:var(--body);font-weight:800;font-size:13px;color:var(--ink);line-height:1.4;}
+.sdesc{font-size:11px;color:var(--ink-light);margin-top:2px;}
+.tscr{
+  font-size:10px;padding:3px 8px;border-radius:12px;font-weight:700;border:1px solid;
+  font-family:var(--body);white-space:nowrap;
+}
+.ts-p{background:rgba(26,188,156,.12);color:var(--teal);border-color:var(--teal);}
+.ts-g{background:rgba(155,89,182,.12);color:var(--purple-light);border-color:var(--purple);}
+.chev{font-size:14px;color:var(--ink-dim);transition:transform .15s;flex-shrink:0;}
+.chev.open{transform:rotate(90deg);}
+.sbody{display:none;padding:12px 14px 14px;border-top:1px solid var(--border);}
+.sbody.open{display:block;}
+.snote{
+  font-size:12px;color:var(--ink-light);margin-bottom:10px;padding:8px 12px;
+  background:rgba(255,179,71,.07);border-left:3px solid var(--gold);border-radius:0 6px 6px 0;
+  font-style:italic;
+}
+.inj-badge{
+  font-size:11px;color:var(--teal);padding:4px 10px;background:rgba(26,188,156,.1);
+  border:1px solid var(--teal);border-radius:12px;display:inline-flex;align-items:center;
+  gap:4px;font-family:var(--body);font-weight:700;margin-bottom:8px;
+}
+.pscr{
+  font-size:11.5px;line-height:1.65;color:var(--ink-light);background:rgba(0,0,0,.25);
+  border:1px solid var(--border);border-radius:6px;padding:10px 12px;white-space:pre-wrap;
+  font-family:monospace;max-height:200px;overflow-y:auto;margin-bottom:8px;
+}
+.pscr .hl{color:var(--blue);}
+.pscr .gi{color:var(--green);}
+.rzone{margin-top:12px;}
+.rzl{font-family:var(--body);font-size:11px;font-weight:700;color:var(--ink-light);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:5px;}
+.exblk{display:none;margin-top:8px;background:rgba(46,204,113,.07);border:1px solid var(--green-dark);border-radius:6px;padding:10px 12px;}
+.exblk.vis{display:block;}
+.exl{font-size:10px;font-weight:800;color:var(--green);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.exc{font-size:12px;color:var(--ink);line-height:1.5;white-space:pre-wrap;font-family:monospace;}
+.pf-rows{display:flex;flex-direction:column;gap:5px;margin-top:3px;}
+.pf-row{display:flex;gap:8px;}
+.pf-k{font-size:10px;font-weight:700;color:var(--ink-light);width:100px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}
+.pf-v{font-size:12px;color:var(--ink);font-family:monospace;flex:1;word-break:break-word;}
+.arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+.dvd{height:1px;background:var(--border);margin:10px 0;}
+
+/* === DATABASE === */
+.db-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;}
+.db-s{
+  height:36px;font-size:13px;padding:0 12px;border:1px solid var(--border);border-radius:6px;
+  background:rgba(0,0,0,.25);color:var(--ink);outline:none;flex:1;min-width:140px;
+}
+.db-s:focus{border-color:var(--purple);}
+.db-s::placeholder{color:var(--ink-dim);}
+.db-f{height:36px;font-size:12px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,.25);color:var(--ink);outline:none;cursor:pointer;}
+.fgrid{display:flex;flex-direction:column;gap:7px;}
+.fc{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.fc.sv{border-color:var(--blue-dark);}
+.fc.sa{border-color:var(--red-dark);}
+.fc.sz{border-color:var(--green-dark);}
+.fch{display:flex;align-items:center;gap:9px;padding:9px 14px;background:var(--surface-2);cursor:pointer;user-select:none;transition:background .15s;}
+.fch:hover{background:var(--surface-3);}
+.fcn{flex:1;font-family:var(--body);font-weight:800;font-size:12px;color:var(--ink);}
+.fcb{display:none;padding:12px 14px;border-top:1px solid var(--border);}
+.fcb.open{display:block;}
+.fc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-bottom:10px;}
+.fc-f{display:flex;flex-direction:column;gap:3px;}.fc-f.full{grid-column:1/-1;}
+.fc-l{font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;letter-spacing:.04em;}
+.fc-i{font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,.25);color:var(--ink);outline:none;width:100%;min-height:0;}
+.fc-i:focus{border-color:var(--purple);}
+.fc-t{font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,.25);color:var(--ink);outline:none;width:100%;resize:vertical;min-height:52px;}
+.fc-t:focus{border-color:var(--purple);}
+.fc-sl{font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,.25);color:var(--ink);outline:none;width:100%;cursor:pointer;min-height:0;}
+.sba{font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;border:1px solid;font-family:var(--body);}
+.sb-o{background:rgba(255,179,71,.12);color:var(--gold);border-color:var(--gold);}
+.sb-v{background:rgba(52,152,219,.12);color:var(--blue);border-color:var(--blue);}
+.sb-a{background:rgba(231,76,60,.12);color:var(--red);border-color:var(--red);}
+.sb-z{background:rgba(46,204,113,.12);color:var(--green);border-color:var(--green);}
+.kba{font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;border:1px solid;font-family:var(--body);}
+.kb-a{background:rgba(46,204,113,.12);color:var(--green);border-color:var(--green);}
+.kb-b{background:rgba(255,179,71,.12);color:var(--gold);border-color:var(--gold);}
+.kb-u{background:rgba(155,89,182,.12);color:var(--purple-light);border-color:var(--purple);}
+.es{text-align:center;padding:2.5rem;font-family:var(--body);font-size:13px;color:var(--ink-dim);}
+
+/* === RESEARCH === */
+.res-lbl{font-family:var(--body);font-weight:800;font-size:12px;color:var(--gold);margin-bottom:7px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.5px;}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
+.chip{font-size:11px;padding:4px 10px;border-radius:12px;background:var(--surface-3);border:1px solid var(--border);color:var(--ink-light);}
+.chip.sent{background:rgba(52,152,219,.15);color:var(--blue);border-color:var(--blue);}
+
+/* === SETTINGS === */
+.strow{display:flex;gap:10px;align-items:center;margin-bottom:8px;}
+.stlbl{font-size:11px;color:var(--ink-light);white-space:nowrap;font-weight:700;width:145px;flex-shrink:0;text-transform:uppercase;letter-spacing:.4px;}
+.stinp{flex:1;}
+.stsel{flex:1;cursor:pointer;}
+.danger-row{display:flex;align-items:center;gap:14px;padding:10px 0;}
+.danger-desc{flex:1;}
+.danger-title{font-family:var(--body);font-weight:800;font-size:12px;color:var(--red);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;}
+.danger-sub{font-size:12px;color:var(--ink-light);}
+.danger-sep{height:1px;background:var(--border);margin:4px 0;}
+.info-grid{display:flex;flex-direction:column;gap:6px;}
+.info-row{display:flex;gap:12px;align-items:baseline;}
+.info-k{font-size:11px;font-weight:700;color:var(--ink-light);width:170px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}
+.info-v{font-size:13px;color:var(--ink);font-family:monospace;}
+
+/* === GIST SYNC === */
+.sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.sync-status{
+  font-size:12px;color:var(--ink-light);display:flex;align-items:center;gap:5px;
+  padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,.15);
+}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-dim);}
+.sync-dot.ok{background:var(--green);}
+.sync-dot.err{background:var(--red);}
+.sync-dot.busy{background:var(--gold);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div class="htbox">
+    <h1>FIAE <span>BEWERBUNGS</span>-QUEST</h1>
+    <div class="sub">Pflichtpraktikum · IBB AG · Umschulung</div>
+    <button id="hamburger-btn" onclick="openSidebar()">☰</button>
+  </div>
+
+  <!-- MOBILE SIDEBAR -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+  <div id="sidebar">
+    <div class="sidebar-close"><button onclick="closeSidebar()">✕</button></div>
+    <div id="sidebar-nav"></div>
+  </div>
+
+  <!-- DESKTOP TABS -->
+  <div class="tab-row" id="tab-row"></div>
+
+  <!-- PANELS -->
+  <div class="panel-wrap">
+
+    <!-- MAP -->
+    <div class="panel active" id="panel-map">
+      <div class="qs">
+        <div class="qh">
+          🗺 Schlachtfeld-Karte
+          <div style="flex:1"></div>
+          <button class="btn btn-sm btn-m" onclick="openRegionModal()">+ Region</button>
+        </div>
+        <div class="map-legend">
+          <div class="leg-item"><div class="leg-dot" style="background:#e74c3c;"></div>Offen</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#ffb347;"></div>In Bearbeitung</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#f1c40f;border:2px solid #ffb347;"></div>Aktiv</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#f1c40f;border-radius:3px;"></div>Bezwungen ★</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#555577;"></div>Absage</div>
+        </div>
+        <div class="map-wrap">
+          <canvas id="map-canvas"></canvas>
+          <div class="map-popup" id="map-popup">
+            <button class="mp-close" onclick="closePopup()">✕</button>
+            <div class="mp-name" id="mp-name"></div>
+            <div class="mp-phase" id="mp-phase"></div>
+            <div class="mp-steps" id="mp-steps"></div>
+            <div class="arow">
+              <button class="btn btn-q btn-sm" onclick="openQuestFromMap()">Quest starten ⚔</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QUESTS -->
+    <div class="panel" id="panel-quest">
+      <div id="quest-overview-wrap">
+        <div class="qs">
+          <div class="qh">⚔ Aktive Quests <div style="flex:1"></div><button class="btn btn-sm btn-v" onclick="switchTab('db')">+ Neue Firma →</button></div>
+          <div class="quest-overview" id="quest-overview"></div>
+        </div>
+      </div>
+      <div class="quest-detail" id="quest-detail">
+        <div class="qd-back">
+          <button class="btn btn-w btn-sm" onclick="closeQuestDetail()">← Übersicht</button>
+          <div class="qd-title" id="qd-title"></div>
+          <div style="flex:1"></div>
+          <button class="btn btn-v btn-sm" onclick="saveQuestToDB()">In DB speichern</button>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-lbl"><span>Fortschritt</span><span id="qd-prog-lbl">0/8</span></div>
+          <div class="prog-track"><div class="prog-fill" id="qd-prog-fill" style="width:0%"></div></div>
+        </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh">Ziel</div>
+          <div style="display:flex;gap:9px;align-items:center;margin-bottom:8px;">
+            <label style="margin:0;width:110px;flex-shrink:0;">Obsidian-Datei</label>
+            <div style="flex:1;font-family:monospace;font-size:12px;color:var(--ink);background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:6px;padding:6px 10px;" id="qd-obs">—</div>
+            <button class="btn btn-s btn-sm" onclick="copyElText('qd-obs',this)">Kopieren</button>
+          </div>
+          <div style="display:flex;gap:9px;align-items:center;">
+            <label style="margin:0;width:110px;flex-shrink:0;">Ordnername</label>
+            <div style="flex:1;font-family:monospace;font-size:12px;color:var(--ink);background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:6px;padding:6px 10px;" id="qd-folder">—</div>
+            <button class="btn btn-s btn-sm" onclick="copyElText('qd-folder',this)">Kopieren</button>
+          </div>
+        </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh">Gesammelte Daten</div>
+          <div class="ss-grid">
+            <div class="ss-cell"><div class="ss-key">Eignungsurteil</div><div class="ss-val empty" id="sd-v">—</div></div>
+            <div class="ss-cell"><div class="ss-key">Anrede</div><div class="ss-val empty" id="sd-anr">—</div></div>
+            <div class="ss-cell"><div class="ss-key">Ansprechpartner</div><div class="ss-val empty" id="sd-ap">—</div></div>
+            <div class="ss-cell"><div class="ss-key">E-Mail</div><div class="ss-val empty" id="sd-em">—</div></div>
+          </div>
+          <div class="addr-row">
+            <div class="ss-key">Firmenadresse</div>
+            <div style="display:flex;gap:8px;margin-top:5px;">
+              <div class="addr-blk empty" id="sd-addr">—</div>
+              <button class="btn btn-s btn-sm" onclick="copyAddr(this)" style="flex-shrink:0;">Kopieren</button>
+            </div>
+          </div>
+        </div>
+        <div id="qd-steps"></div>
+      </div>
+    </div>
+
+    <!-- DATABASE -->
+    <div class="panel" id="panel-db">
+      <div class="qs">
+        <div class="qh">📋 Firmen-Datenbank</div>
+        <div class="db-bar">
+          <input class="db-s" id="db-search" type="text" placeholder="Suchen …" oninput="renderDB()"/>
+          <select class="db-f" id="db-fs" onchange="renderDB()">
+            <option value="">Alle Status</option>
+            <option value="offen">Offen</option>
+            <option value="versendet">Versendet</option>
+            <option value="absage">Absage</option>
+            <option value="zusage">Zusage</option>
+          </select>
+          <select class="db-f" id="db-fr" onchange="renderDB()">
+            <option value="">Alle Regionen</option>
+          </select>
+          <button class="btn btn-v btn-sm" onclick="addFirm()">+ Neu</button>
+          <button class="btn btn-m btn-sm" onclick="openModal('import-modal')">Import</button>
+          <button class="btn btn-s btn-sm" onclick="exportDB()">JSON</button>
+          <button class="btn btn-w btn-sm" onclick="exportCSV()">CSV</button>
+        </div>
+        <div class="fgrid" id="firm-grid"></div>
+      </div>
+    </div>
+
+    <!-- RESEARCH -->
+    <div class="panel" id="panel-research">
+      <div class="qs">
+        <div class="qh">🔭 Deep Research Prompt</div>
+        <div class="notice">Bereits beworbene Firmen werden automatisch als Ausschluss eingebettet.</div>
+        <div class="chips" id="sent-chips"></div>
+        <div class="strow"><div class="stlbl">Region</div><input class="stinp" id="r-region" value="Bremen und Oldenburg" style="flex:1;"/></div>
+        <div class="strow" style="margin-top:6px;"><div class="stlbl">Tech-Schwerpunkt</div><input class="stinp" id="r-focus" value="Java, C#, Web, App-Entwicklung" style="flex:1;"/></div>
+        <div class="strow" style="margin-top:6px;"><div class="stlbl">Firmengröße</div><input class="stinp" id="r-size" value="Mittelstand und Großunternehmen" style="flex:1;"/></div>
+        <div class="arow" style="margin-top:10px;">
+          <button class="btn btn-q" onclick="genRPrompt()">Prompt generieren</button>
+        </div>
+        <div id="r-pw" style="display:none;margin-top:12px;">
+          <div class="pscr" id="r-pb" style="max-height:200px;"></div>
+          <div class="arow">
+            <button class="btn btn-q btn-sm" onclick="cpRPrompt(this)">Kopieren</button>
+            <a class="btn btn-w btn-sm" href="https://www.perplexity.ai" target="_blank" rel="noopener">Perplexity öffnen ↗</a>
+          </div>
+        </div>
+      </div>
+      <div class="qs">
+        <div class="qh">🔄 Bereinigung & Import</div>
+        <div class="notice">Research-Ergebnis einfügen → Bereinigungsprompt → ChatGPT → JSON → DB.</div>
+        <label>Schritt 1 — Research-Ergebnis</label>
+        <textarea id="r-raw" rows="4" placeholder="Perplexity Deep Research Ergebnis …"></textarea>
+        <div class="arow" style="margin-bottom:10px;">
+          <button class="btn btn-m" onclick="genClean()">Bereinigungsprompt generieren</button>
+        </div>
+        <div id="r-cw" style="display:none;">
+          <label>Schritt 2 — Prompt in ChatGPT einfügen</label>
+          <div class="pscr" id="r-cb" style="max-height:200px;"></div>
+          <div class="arow" style="margin-bottom:10px;">
+            <button class="btn btn-m btn-sm" onclick="cpClean(this)">Kopieren</button>
+            <a class="btn btn-w btn-sm" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>
+          </div>
+        </div>
+        <div id="r-jw" style="display:none;">
+          <label>Schritt 3 — JSON-Ergebnis importieren</label>
+          <textarea id="r-json" rows="4" placeholder="ChatGPT JSON-Antwort …"></textarea>
+          <div class="arow" style="margin-top:8px;">
+            <button class="btn btn-v" onclick="importJSON()">In Datenbank importieren</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="panel-settings">
+
+      <!-- Persönliche Angaben -->
+      <div class="qs">
+        <div class="qh">👤 Persönliche Angaben</div>
+        <div class="notice">Diese Werte werden automatisch in alle Prompts eingesetzt.</div>
+        <label>Name</label><input class="stinp" id="cfg-name" placeholder="Kerim Mallée" oninput="saveCfg()"/>
+        <label>Bildungsträger</label><input class="stinp" id="cfg-traeger" placeholder="IBB AG" oninput="saveCfg()"/>
+        <label>Ausbildungsberuf</label><input class="stinp" id="cfg-beruf" placeholder="Fachinformatiker für Anwendungsentwicklung" oninput="saveCfg()"/>
+        <label>Praktikum von</label><input class="stinp" id="cfg-von" placeholder="10.08.2026" oninput="saveCfg()"/>
+        <label>Praktikum bis</label><input class="stinp" id="cfg-bis" placeholder="02.04.2027" oninput="saveCfg()"/>
+        <div class="arow" style="margin-top:12px;">
+          <button class="btn btn-v btn-sm" onclick="saveCfgConfirm()">Speichern</button>
+          <span id="cfg-saved" style="font-size:12px;color:var(--green);display:none;">✓ Gespeichert</span>
+        </div>
+      </div>
+
+      <!-- GitHub Gist Sync -->
+      <div class="qs">
+        <div class="qh">☁ GitHub Gist Sync</div>
+        <div class="notice">Token und Gist-ID werden nur lokal im Browser gespeichert — nie exportiert.</div>
+        <label>GitHub Personal Access Token (nur Gist-Berechtigung)</label>
+        <input type="password" id="gist-token" placeholder="ghp_…" oninput="saveGistCfg()"/>
+        <label>Gist ID</label>
+        <input id="gist-id" placeholder="abc123…" oninput="saveGistCfg()"/>
+        <label>Auto-Sync (30s Debounce nach jeder Änderung)</label>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+          <input type="checkbox" id="gist-auto" onchange="saveGistCfg()" style="width:auto;min-height:0;height:18px;cursor:pointer;"/>
+          <label for="gist-auto" style="margin:0;text-transform:none;font-size:13px;color:var(--ink);">Automatisch synchronisieren</label>
+        </div>
+        <div class="sync-row" style="margin-top:12px;">
+          <button class="btn btn-s btn-sm" onclick="gistPush(false)">⬆ Hochladen</button>
+          <button class="btn btn-s btn-sm" onclick="gistPull(false)">⬇ Herunterladen</button>
+          <button class="btn btn-w btn-sm" onclick="gistMerge()">⊕ Merge</button>
+          <div class="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-msg">Nicht konfiguriert</span></div>
+        </div>
+      </div>
+
+      <!-- Export / Import -->
+      <div class="qs">
+        <div class="qh">💾 Backup & Export</div>
+        <div class="notice">JSON-Export enthält alle Daten: Firmen, Quest-Fortschritte, Regionen und Einstellungen. Tokens werden nie exportiert.</div>
+        <div class="arow" style="margin-bottom:12px;">
+          <button class="btn btn-q" onclick="exportAll()">Vollständiger JSON-Export</button>
+          <button class="btn btn-w" onclick="exportCSV()">CSV-Export</button>
+        </div>
+        <div class="notice">JSON-Import stellt ein Backup wieder her.</div>
+        <div class="arow">
+          <button class="btn btn-m" onclick="openModal('import-modal')">JSON-Import</button>
+        </div>
+      </div>
+
+      <!-- Tracking -->
+      <div class="qs">
+        <div class="qh">📊 Tracking-Log</div>
+        <div class="notice">Tab-getrennter Block für die Bewerbungstabelle.</div>
+        <label>Firma</label>
+        <select id="track-firm-sel"><option value="all">Alle versendeten</option></select>
+        <div class="arow" style="margin-top:10px;">
+          <button class="btn btn-q" onclick="genTrackingSel()">Log generieren</button>
+          <button class="btn btn-s btn-sm" id="btn-cp-track2" style="display:none;" onclick="cpTrack2(this)">Kopieren</button>
+        </div>
+        <div id="track-out2" style="display:none;margin-top:8px;">
+          <div class="pscr" id="track-txt2" style="max-height:200px;"></div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="qs" style="border-color:var(--red-dark);">
+        <div class="qh" style="color:var(--red);">⚠ Gefahrenzone</div>
+        <div class="danger-row">
+          <div class="danger-desc">
+            <div class="danger-title">Quest-Fortschritte zurücksetzen</div>
+            <div class="danger-sub">Firmendaten bleiben. Prompts, Ergebnisse und Schritte werden gelöscht.</div>
+          </div>
+          <button class="btn btn-d btn-sm" onclick="resetAllQuests()">Quests reset</button>
+        </div>
+        <div class="danger-sep"></div>
+        <div class="danger-row">
+          <div class="danger-desc">
+            <div class="danger-title">Alle Daten löschen</div>
+            <div class="danger-sub">Löscht alle Firmen, Regionen, Quest-Fortschritte und Einstellungen. Nicht rückgängig.</div>
+          </div>
+          <button class="btn btn-d btn-sm" onclick="resetAll()">Alles löschen</button>
+        </div>
+      </div>
+
+      <!-- App Info -->
+      <div class="qs">
+        <div class="qh">ℹ App-Info</div>
+        <div class="info-grid">
+          <div class="info-row"><div class="info-k">Version</div><div class="info-v">v6.0</div></div>
+          <div class="info-row"><div class="info-k">Storage Key</div><div class="info-v">fiae_quest_v6</div></div>
+          <div class="info-row"><div class="info-k">Gist-Datei</div><div class="info-v">fiae_quest_data.json</div></div>
+          <div class="info-row"><div class="info-k">Firmen gespeichert</div><div class="info-v" id="info-firms">—</div></div>
+          <div class="info-row"><div class="info-k">Davon versendet</div><div class="info-v" id="info-sent">—</div></div>
+          <div class="info-row"><div class="info-k">Regionen</div><div class="info-v" id="info-regions">—</div></div>
+          <div class="info-row"><div class="info-k">Datengröße (localStorage)</div><div class="info-v" id="info-size">—</div></div>
+        </div>
+      </div>
+
+    </div><!-- /panel-settings -->
+
+  </div><!-- /panel-wrap -->
+
+</div><!-- /app -->
+
+<!-- Modals -->
+<div class="modal-bg hidden" id="region-modal">
+  <div class="modal-box">
+    <div class="modal-title">+ Neue Region</div>
+    <label>Name</label><input id="rg-name" placeholder="z. B. Hamburg"/>
+    <label>Kürzel (2-3 Zeichen)</label><input id="rg-short" placeholder="HH" maxlength="3"/>
+    <div class="arow" style="margin-top:16px;">
+      <button class="btn btn-v" onclick="addRegion()">Hinzufügen</button>
+      <button class="btn btn-d" onclick="closeModal('region-modal')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="import-modal">
+  <div class="modal-box">
+    <div class="modal-title">📥 Datenbank importieren</div>
+    <div class="notice">JSON-Array oder vollständiges Backup. Vorhandene Einträge werden aktualisiert.</div>
+    <label>JSON</label>
+    <textarea id="import-ta" rows="8" placeholder='[{"name":"Firma GmbH","region":"Bremen",...}]'></textarea>
+    <div class="arow" style="margin-top:16px;">
+      <button class="btn btn-v" onclick="doImport()">Importieren</button>
+      <button class="btn btn-d" onclick="closeModal('import-modal')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ================================================================
+// STATE & STORAGE
+// ================================================================
+var LS = 'fiae_quest_v6';
+var GIST_TOKEN_KEY = 'fiae_quest_gist_token';
+var GIST_ID_KEY    = 'fiae_quest_gist_id';
+var GIST_AUTO_KEY  = 'fiae_quest_gist_auto';
+var GIST_FILE      = 'fiae_quest_data.json';
+
+var DEFAULT_REGIONS = [
+  { id:'bremen',    name:'Bremen',    short:'HB', x:.55, y:.38 },
+  { id:'oldenburg', name:'Oldenburg', short:'OL', x:.25, y:.35 },
+];
+var CFG_DEFAULTS = {
+  name:'Kerim Mallée', traeger:'IBB AG',
+  beruf:'Fachinformatiker für Anwendungsentwicklung',
+  von:'10.08.2026', bis:'02.04.2027'
+};
+
+function defaultQuest() {
+  return { done:{}, returns:{}, extracted:{}, contact:{ansprechpartner:'',anrede:'',email:'',adresse:''}, verdict:'' };
+}
+function defaultS() {
+  return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{} };
+}
+
+var S = defaultS();
+var activeQuestFirmId = null;
+var popupFirmId = null;
+var openFirms = {};
+var openSteps = {};
+var gistAutoSyncTimer = null;
+var _rPrompt='', _cleanPrompt='', _track2Text='';
+
+// ----------------------------------------------------------------
+// SAVE / LOAD
+// ----------------------------------------------------------------
+function save() {
+  S._lastExported = new Date().toISOString();
+  try { localStorage.setItem(LS, JSON.stringify(S)); } catch(e) { toast('Speicherfehler: ' + e.message.slice(0,40)); }
+  gistAutoSyncDebounced();
+}
+
+function load() {
+  try {
+    var raw = localStorage.getItem(LS);
+    if (raw) {
+      var p = JSON.parse(raw.replace(/^\uFEFF/,''));
+      S = Object.assign(defaultS(), p);
+      if (!S.regions || !S.regions.length) S.regions = [].concat(DEFAULT_REGIONS);
+      if (!S.cfg) S.cfg = {};
+      // Ensure all firms have quest objects
+      S.firms.forEach(function(f) { if (!f.quest) f.quest = defaultQuest(); });
+    }
+  } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
+}
+
+// ----------------------------------------------------------------
+// FIRM SCHEMA
+// ----------------------------------------------------------------
+function newFirm(name) {
+  return {
+    id: uid(), name:name||'', region:'', kategorie:'unklar',
+    status:'offen', bewerbungsDatum:'',
+    adresse:'', email:'', ansprechpartner:'', anrede:'',
+    anschreibenSatz:'', stichpunkte:'', eignungsurteil:'', notizen:'',
+    quest: defaultQuest()
+  };
+}
+function getFirm(id) { return S.firms.find(function(f){return String(f.id)===String(id);}); }
+function findByName(name) {
+  var n = name.trim().toLowerCase();
+  return S.firms.find(function(f){return f.name.trim().toLowerCase()===n;});
+}
+
+// ----------------------------------------------------------------
+// HELPERS
+// ----------------------------------------------------------------
+function uid() { return String(Date.now()) + String(Math.random()).slice(2,8); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+var _toastTimer;
+function toast(msg, dur) {
+  var el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, dur||2600);
+}
+function copyText(text, btn, lbl) {
+  lbl = lbl || 'Kopiert ✓';
+  var orig = btn ? btn.textContent : '';
+  function ok() {
+    if (btn) { btn.classList.add('copied'); btn.textContent = lbl; }
+    toast('In Zwischenablage kopiert!');
+    setTimeout(function(){ if (btn) { btn.classList.remove('copied'); btn.textContent = orig; } }, 2000);
+  }
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(ok).catch(function(){ fbCopy(text,ok); });
+  else fbCopy(text, ok);
+}
+function fbCopy(text, cb) {
+  var ta = document.createElement('textarea'); ta.value = text;
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch(e){}
+  document.body.removeChild(ta); if (cb) cb();
+}
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function copyElText(id, btn) { copyText(document.getElementById(id).textContent, btn); }
+function copyAddr(btn) {
+  var f = getFirm(activeQuestFirmId);
+  if (!f || !f.quest.contact.adresse) { toast('Keine Adresse vorhanden.'); return; }
+  copyText(f.quest.contact.adresse, btn);
+}
+
+// ================================================================
+// TABS
+// ================================================================
+var TABS = [
+  { id:'map',      label:'🗺 Karte' },
+  { id:'quest',    label:'⚔ Quests' },
+  { id:'db',       label:'📋 Datenbank' },
+  { id:'research', label:'🔭 Research' },
+  { id:'settings', label:'⚙ Einstellungen' },
+];
+var currentTab = 'map';
+
+function renderTabs() {
+  var tr = document.getElementById('tab-row');
+  var sn = document.getElementById('sidebar-nav');
+  tr.innerHTML = TABS.map(function(t) {
+    return '<button class="tab-btn' + (t.id===currentTab?' active':'') + '" onclick="switchTab(\''+t.id+'\')">' + t.label + '</button>';
+  }).join('');
+  sn.innerHTML = TABS.map(function(t) {
+    return '<button class="sidebar-nav-btn' + (t.id===currentTab?' active':'') + '" onclick="sidebarNav(\''+t.id+'\')">' + t.label + '</button>';
+  }).join('');
+}
+
+function switchTab(id) {
+  currentTab = id;
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  var panel = document.getElementById('panel-'+id);
+  if (panel) panel.classList.add('active');
+  renderTabs();
+  if (id==='map') { setTimeout(drawMap, 50); }
+  if (id==='db') { renderDB(); renderDBRegionFilter(); }
+  if (id==='quest') renderQuestOverview();
+  if (id==='research') renderResearchChips();
+  if (id==='settings') { loadCfgUI(); updateInfoPanel(); populateTrackFirmSel(); loadGistCfgUI(); }
+}
+
+function sidebarNav(id) { closeSidebar(); switchTab(id); }
+function openSidebar() {
+  renderTabs();
+  document.getElementById('sidebar').style.transform = 'translateX(0)';
+  document.getElementById('sidebar-overlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').style.transform = '';
+  document.getElementById('sidebar-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ================================================================
+// MAP
+// ================================================================
+var CANVAS_W=800, CANVAS_H=440;
+
+function firmColor(f) {
+  if (f.status==='absage') return '#555577';
+  if (f.status==='versendet'||f.status==='zusage') return '#d4a017';
+  var steps = Object.values(f.quest.done||{}).filter(Boolean).length;
+  return steps > 0 ? '#e8960a' : '#c0392b';
+}
+function isTrophy(f) { return f.status==='versendet'||f.status==='zusage'; }
+function firmPos(f) {
+  var reg = S.regions.find(function(r){ return r.name===f.region||r.id===f.region; });
+  if (!reg) return {x:.5,y:.5};
+  var h = 0; for (var i=0;i<f.name.length;i++) h=(h*31+f.name.charCodeAt(i))&0xffff;
+  return { x:Math.max(.05,Math.min(.95,reg.x+((h%200)-100)/800)), y:Math.max(.05,Math.min(.95,reg.y+(((h>>4)%200)-100)/600)) };
+}
+
+function drawMap() {
+  var canvas = document.getElementById('map-canvas');
+  var cw = canvas.parentElement.clientWidth - 28;
+  canvas.width=CANVAS_W; canvas.height=CANVAS_H;
+  canvas.style.width=cw+'px';
+  canvas.style.height=Math.round(CANVAS_H*(cw/CANVAS_W))+'px';
+  var ctx = canvas.getContext('2d');
+
+  // Background
+  var g = ctx.createLinearGradient(0,0,CANVAS_W,CANVAS_H);
+  g.addColorStop(0,'#1a2040'); g.addColorStop(1,'#0d1530');
+  ctx.fillStyle=g; ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+  // Grid
+  ctx.strokeStyle='rgba(42,74,127,.35)'; ctx.lineWidth=.5;
+  for(var x=0;x<CANVAS_W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CANVAS_H);ctx.stroke();}
+  for(var y=0;y<CANVAS_H;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(CANVAS_W,y);ctx.stroke();}
+
+  // Regions
+  S.regions.forEach(function(reg) {
+    var cx=reg.x*CANVAS_W, cy=reg.y*CANVAS_H;
+    ctx.beginPath(); ctx.arc(cx,cy,80,0,Math.PI*2);
+    ctx.fillStyle='rgba(155,89,182,.07)'; ctx.fill();
+    ctx.strokeStyle='rgba(155,89,182,.3)'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font='bold 11px Lato,sans-serif'; ctx.fillStyle='rgba(155,89,182,.5)';
+    ctx.textAlign='center'; ctx.fillText(reg.name,cx,cy-85);
+  });
+
+  // Firms
+  S.firms.forEach(function(f) {
+    var pos=firmPos(f);
+    var px=pos.x*CANVAS_W, py=pos.y*CANVAS_H;
+    var col=firmColor(f), trophy=isTrophy(f);
+    var isActive=String(f.id)===String(activeQuestFirmId);
+    var steps=Object.values(f.quest.done||{}).filter(Boolean).length;
+
+    if (trophy) {
+      var s=11;
+      ctx.fillStyle=col; ctx.strokeStyle='#f1c40f'; ctx.lineWidth=isActive?2.5:1.5;
+      ctx.beginPath(); ctx.rect(px-s,py-s,s*2,s*2); ctx.fill(); ctx.stroke();
+      ctx.font='12px serif'; ctx.textAlign='center'; ctx.fillStyle='#1a0a00';
+      ctx.fillText('★',px,py+4);
+    } else {
+      var r=isActive?14:11;
+      ctx.beginPath(); ctx.arc(px,py,r,0,Math.PI*2);
+      ctx.fillStyle=col; ctx.fill();
+      ctx.strokeStyle=isActive?'#f1c40f':'rgba(255,255,255,.25)';
+      ctx.lineWidth=isActive?2.5:1; ctx.stroke();
+      if (f.status==='absage') {
+        ctx.font='12px serif'; ctx.textAlign='center'; ctx.fillStyle='#888';
+        ctx.fillText('💀',px,py+4);
+      } else if (steps>0) {
+        ctx.beginPath();
+        ctx.arc(px,py,r,-(Math.PI/2),(-(Math.PI/2))+(Math.PI*2*(steps/8)));
+        ctx.strokeStyle='#f1c40f'; ctx.lineWidth=3; ctx.stroke();
+        ctx.font='8px Lato,sans-serif'; ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,.8)';
+        ctx.fillText(f.name.slice(0,2).toUpperCase(),px,py+3);
+      } else {
+        ctx.font='8px Lato,sans-serif'; ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,.7)';
+        ctx.fillText(f.name.slice(0,2).toUpperCase(),px,py+3);
+      }
+    }
+  });
+
+  // Compass
+  var ccx=CANVAS_W-45, ccy=CANVAS_H-45;
+  ctx.font='bold 12px Lato,sans-serif'; ctx.fillStyle='rgba(153,153,187,.5)'; ctx.textAlign='center';
+  ctx.fillText('N',ccx,ccy-22); ctx.fillText('S',ccx,ccy+28);
+  ctx.fillText('W',ccx-24,ccy+5); ctx.fillText('O',ccx+24,ccy+5);
+  ctx.beginPath(); ctx.arc(ccx,ccy,18,0,Math.PI*2);
+  ctx.strokeStyle='rgba(42,74,127,.5)'; ctx.lineWidth=1; ctx.stroke();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var canvas = document.getElementById('map-canvas');
+  canvas.addEventListener('click', function(e) {
+    var rect=canvas.getBoundingClientRect();
+    var sx=CANVAS_W/rect.width, sy=CANVAS_H/rect.height;
+    var mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
+    var hit=null, minD=999;
+    S.firms.forEach(function(f) {
+      var p=firmPos(f); var d=Math.hypot(p.x*CANVAS_W-mx,p.y*CANVAS_H-my);
+      if(d<22&&d<minD){minD=d;hit=f;}
+    });
+    if(hit) showMapPopup(hit,e.clientX,e.clientY); else closePopup();
+  });
+});
+
+function showMapPopup(f,cx,cy) {
+  popupFirmId=f.id;
+  var steps=Object.values(f.quest.done||{}).filter(Boolean).length;
+  var phase=steps>=6?'Phase IV':steps>=4?'Phase III':steps>=3?'Phase II':steps>=1?'Phase I':'Nicht begonnen';
+  document.getElementById('mp-name').textContent=f.name;
+  document.getElementById('mp-phase').textContent=phase+' · '+steps+'/8 · '+f.status;
+  var sb=document.getElementById('mp-steps');
+  sb.innerHTML=[0,1,2,3,4,5,6,7].map(function(i){return '<div class="mp-step'+(f.quest.done[i]?' done':'')+'"></div>';}).join('');
+  var mapRect=document.querySelector('.map-wrap').getBoundingClientRect();
+  var px=cx-mapRect.left+8, py=cy-mapRect.top-20;
+  if(px+280>mapRect.width-10) px=cx-mapRect.left-285;
+  if(py+140>mapRect.height) py=mapRect.height-145;
+  var popup=document.getElementById('map-popup');
+  popup.style.left=Math.max(4,px)+'px'; popup.style.top=Math.max(4,py)+'px';
+  popup.classList.add('vis');
+}
+function closePopup() { document.getElementById('map-popup').classList.remove('vis'); popupFirmId=null; }
+function openQuestFromMap() { if(!popupFirmId) return; closePopup(); activeQuestFirmId=popupFirmId; openQuestDetail(popupFirmId); switchTab('quest'); }
+
+function openRegionModal() { openModal('region-modal'); }
+function addRegion() {
+  var name=document.getElementById('rg-name').value.trim();
+  var short=document.getElementById('rg-short').value.trim().toUpperCase();
+  if(!name||!short){toast('Name und Kürzel erforderlich.');return;}
+  S.regions.push({id:name.toLowerCase().replace(/\s/g,'_'),name:name,short:short,x:.5+Math.random()*.2-.1,y:.5+Math.random()*.2-.1});
+  save(); closeModal('region-modal'); drawMap(); renderDBRegionFilter(); toast('Region hinzugefügt: '+name);
+}
+
+// ================================================================
+// QUEST OVERVIEW
+// ================================================================
+function questPhases(f) {
+  var d=f.quest.done||{};
+  return [d[0]&&d[1]&&d[2], d[3]&&d[4], d[5]&&d[6], d[7]];
+}
+
+function renderQuestOverview() {
+  var wrap=document.getElementById('quest-overview');
+  if(!wrap) return;
+  var active=S.firms.filter(function(f){return f.status==='offen'||Object.values(f.quest.done||{}).some(Boolean);});
+  if(!active.length){
+    wrap.innerHTML='<div class="es">Keine aktiven Quests.<br><br>Firmen in der Datenbank hinzufügen oder von der Karte starten.</div>';
+    return;
+  }
+  wrap.innerHTML=active.map(function(f){
+    var steps=Object.values(f.quest.done||{}).filter(Boolean).length;
+    var phases=questPhases(f);
+    var isAQ=String(f.id)===String(activeQuestFirmId);
+    return '<div class="qcard'+(isAQ?' active-quest':'')+'" onclick="openQuestDetail(\''+f.id+'\')">' +
+      '<div class="qc-head"><div class="qc-name">'+esc(f.name)+'</div><div class="qc-region">'+esc(f.region||'')+'</div></div>' +
+      '<div class="qc-body">' +
+      '<div class="phase-dots">' + ['I','II','III','IV'].map(function(p,i){
+        return '<div class="pdot'+(phases[i]?' done':steps>(i*2)?' active':'')+'" title="Phase '+p+'">'+p+'</div>';
+      }).join('') + '</div>' +
+      '<div class="step-bar">' + [0,1,2,3,4,5,6,7].map(function(i){
+        return '<div class="sbar-cell'+(f.quest.done[i]?' done':'')+'"></div>';
+      }).join('') + '</div>' +
+      '<div style="font-size:11px;color:var(--ink-light);margin-top:5px;">'+steps+'/8 Schritte</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+// ================================================================
+// QUEST DETAIL
+// ================================================================
+function openQuestDetail(id) {
+  var f=getFirm(id); if(!f) return;
+  activeQuestFirmId=id;
+  document.getElementById('quest-overview-wrap').style.display='none';
+  document.getElementById('quest-detail').classList.add('vis');
+  document.getElementById('qd-title').textContent=f.name;
+  document.getElementById('qd-obs').textContent='r.FIAE.PS.Bewerbungen.'+f.name.trim();
+  document.getElementById('qd-folder').textContent='Bewerbung_'+f.name.trim().replace(/\s+/g,'_');
+  updateStatusStrip(f); renderQuestSteps(f); drawMap();
+}
+function closeQuestDetail() {
+  document.getElementById('quest-overview-wrap').style.display='';
+  document.getElementById('quest-detail').classList.remove('vis');
+  activeQuestFirmId=null; renderQuestOverview(); drawMap();
+}
+function updateStatusStrip(f) {
+  var q=f.quest;
+  var vEl=document.getElementById('sd-v');
+  if(q.verdict){var cls=q.verdict.startsWith('✅')?'vok':q.verdict.startsWith('🟡')?'vwarn':q.verdict.startsWith('❌')?'vfail':'';vEl.className='ss-val '+(cls||'');vEl.textContent=q.verdict;}
+  else{vEl.className='ss-val empty';vEl.textContent='— noch nicht geprüft';}
+  function setV(id,val,fb){var el=document.getElementById(id);if(val){el.className='ss-val';el.textContent=val;}else{el.className='ss-val empty';el.textContent=fb;}}
+  var c=q.contact;
+  setV('sd-ap',c.ansprechpartner,'— nicht bekannt');
+  setV('sd-anr',c.anrede,'— Sehr geehrte Damen und Herren');
+  setV('sd-em',c.email,'— nicht bekannt');
+  var addrEl=document.getElementById('sd-addr');
+  if(c.adresse){addrEl.textContent=c.adresse;addrEl.classList.remove('empty');}
+  else{addrEl.textContent='— noch nicht ermittelt';addrEl.classList.add('empty');}
+}
+function updateProgress(f) {
+  var done=Object.values(f.quest.done||{}).filter(Boolean).length;
+  document.getElementById('qd-prog-lbl').textContent=done+'/8';
+  document.getElementById('qd-prog-fill').style.width=Math.round(done/8*100)+'%';
+}
+function saveQuestToDB() {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var q=f.quest;
+  if(q.verdict) f.eignungsurteil=q.verdict;
+  if(q.contact.ansprechpartner) f.ansprechpartner=q.contact.ansprechpartner;
+  if(q.contact.anrede) f.anrede=q.contact.anrede;
+  if(q.contact.email) f.email=q.contact.email;
+  if(q.contact.adresse) f.adresse=q.contact.adresse;
+  if(q.extracted[2]) f.stichpunkte=q.extracted[2];
+  save(); toast('In DB gespeichert: '+f.name);
+}
+
+// ================================================================
+// STEPS
+// ================================================================
+var STEPS=[
+  {phase:'Phase I — Erkundung',pi:'🔭',num:1,tool:'perplexity',tl:'Perplexity',
+   name:'Eignungsprüfung',desc:'5 Kriterien (A–E) · öffentliche Quellen',
+   note:'Ergebnis einfügen. App erkennt Urteil automatisch.',
+   rt:'verdict',rh:'Perplexity-Antwort einfügen …',
+   prompt:function(c){var cfg=getCfg();return 'Prüfe ob '+( c||'[FIRMA]')+' für ein FIAE-Pflichtpraktikum (Umschulung '+cfg.traeger+') geeignet ist. Nur Websuche.\n\n## HARTE KRITERIEN (MUSS)\nA – IT/Software-Tätigkeitsfeld\nB – IHK-Ausbildungsbetrieb ODER IT-Ausbildung ODER Umschüler\nC – Programmiersprachen, Frameworks, Projektarbeit\n## WEICHE KRITERIEN\nD – Präsenzstandort, Teamstruktur\nE – Größe, Mentoring\n\nTabelle: Kriterium | Bewertung | Begründung | Quelle\nGesamtbewertung: ✅ geeignet / 🟡 potenziell / ⚠️ unklar / ❌ ungeeignet + max. 4 Stichpunkte';}},
+  {phase:null,num:2,tool:'perplexity',tl:'Perplexity',
+   name:'Kontaktdaten',desc:'Adresse · Ansprechpartner · E-Mail',
+   note:'App liest JSON automatisch — Anrede fließt in Schritt 7.',
+   rt:'contact',rh:'Perplexity-Antwort einfügen (App findet JSON automatisch) …',
+   prompt:function(c){return 'Recherchiere Kontaktdaten für Praktikumsbewerbung (FIAE-Umschulung) bei '+(c||'[FIRMA]')+'. Nur Websuche.\n\nGib am Ende ZWINGEND diesen JSON-Block aus:\n```json\n{\n  "ansprechpartner": "Vorname Nachname (Funktion) — oder leer",\n  "anrede": "Sehr geehrte Frau/Herr [Name] — oder: Sehr geehrte Damen und Herren",\n  "email": "adresse@firma.de",\n  "adresse": "Firmenname\\nStraße Nr\\nPLZ Ort"\n}\n```';}},
+  {phase:null,num:3,tool:'perplexity',tl:'Perplexity',
+   name:'Firmenprofil-Stichpunkte',desc:'Fakten für den firmenspezifischen Satz',
+   note:'Stichpunkte fließen automatisch in Schritt 4.',
+   rt:'text',rh:'Perplexity-Ergebnis einfügen …',
+   prompt:function(c){return 'Codeblock mit Unternehmensstichpunkten für '+(c||'[FIRMA]')+' (FIAE-Anschreiben). Nur Websuche.\nGruppiert nach: Geschichte · Unternehmensprofil · Kernkompetenzen · IT-Fokus · Kultur & Ausbildung · Arbeitsmodell';}},
+  {phase:'Phase II — Schmiedekunst',pi:'⚒',num:4,tool:'gpt',tl:'ChatGPT',
+   name:'Anschreiben generieren',desc:'Pflichtsatz + firmenspezifischer Satz',
+   note:'Stichpunkte aus Schritt 3 eingebaut. Fertiges Anschreiben zurückeinfügen.',
+   rt:'anschreiben',rh:'Fertiges Anschreiben einfügen …',
+   prompt:function(c,ext){var cfg=getCfg();var sp=(ext&&ext[2])?ext[2]:'[STICHPUNKTE AUS SCHRITT 3]';return 'Sachliches Anschreiben, Pflichtpraktikum '+cfg.beruf+' bei '+(c||'[FIRMA]')+'.\nZeitraum: '+cfg.von+'–'+cfg.bis+' · '+cfg.traeger+' · unentgeltlich\n\nPflichtsatz WORTGLEICH:\n„Als Umschüler im Beruf zum '+cfg.beruf+' mit IHK-Abschluss bei der '+cfg.traeger+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+cfg.von+' bis '+cfg.bis+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte."\n\nGENAU EINEN firmenspezifischen Satz. Stichpunkte:\n'+sp+'\n\nPraktikumsinhalte: Softwareentwicklung, OOP, Datenbanken, Projektarbeit. Max. eine Seite.';}},
+  {phase:null,num:5,tool:'gpt',tl:'ChatGPT',
+   name:'Anschreiben prüfen',desc:'IBB/FIAE-konform + Faktencheck',
+   note:'Anschreiben aus Schritt 4 eingebaut. Prüfergebnis zurückeinfügen.',
+   rt:'text',rh:'Prüfergebnis einfügen …',
+   prompt:function(c,ext){var as=(ext&&ext[3])?ext[3]:'[ANSCHREIBEN AUS SCHRITT 4]';return 'Prüf-Assistent FIAE. Keine Umformulierungen. Unternehmensangaben per Websuche.\nAnschreiben:\n'+as+'\nUnternehmen: '+(c||'[FIRMA]')+'\n1. Pflichtprüfung: ✅/❌ Umschulung · Ausbildungsberuf · Zeitraum · Pflichtpraktikum · Unternehmen+Standort\n2. Faktencheck (Websuche): Existenz, Adresse, Tätigkeitsfeld\n3. Urteil: ✅ Bereit zum Versand / ⚠️ Korrekturbedarf';}},
+  {phase:'Phase III — Finalisierung',pi:'📜',num:6,tool:'gpt',tl:'ChatGPT',
+   name:'PDF-Dateiname',desc:'Schema ohne Umlaute',
+   note:'Nach Zusammenfügen Anschreiben+Lebenslauf.',
+   rt:null,
+   prompt:function(c){var cfg=getCfg();return 'Dateiname: '+cfg.name+' · FIAE-Pflichtpraktikum · '+(c||'[FIRMA]')+'. Schema: Name_Bewerbung_Rolle_Firma_Ort.pdf · Kein Umlaut.';}},
+  {phase:null,num:7,tool:'gpt',tl:'ChatGPT',
+   name:'Mailtext',desc:'Sachlicher Begleittext',
+   note:'Anrede aus Schritt 2 automatisch eingesetzt.',
+   rt:null,
+   prompt:function(c,ext,contact){var cfg=getCfg();var anr=(contact&&contact.anrede)?contact.anrede:'Sehr geehrte Damen und Herren';var inj=contact&&contact.anrede;return 'Mailtext für Bewerbungsversand.\nUnternehmen: '+(c||'[FIRMA]')+'\nAnrede: '+anr+(inj?' [automatisch aus Schritt 2]':' [Fallback]')+'\nBetreff: Bewerbung um ein Pflichtpraktikum als '+cfg.beruf+'\nUmschulung · '+cfg.traeger+' · '+cfg.von+'–'+cfg.bis+' · Max. 3–5 Zeilen · PDF beigefügt · Deutsch';}},
+  {phase:'Phase IV — Dokumentation',pi:'📖',num:8,tool:'gpt',tl:'ChatGPT',
+   name:'Tracking-Eintrag',desc:'Tab-getrennter Codeblock',
+   note:'Versendete E-Mail einfügen.',
+   rt:null,
+   prompt:function(c){return 'Tracking-Eintrag aus E-Mail:\n[E-MAIL EINFÜGEN]\nSpalten tab-getrennt: Datum\\tInitiativ\\tArt der Anzeige\\tFirma,PLZ,Ort\\tStelle\\tAbsage\\tVorstellungsgespräch\\tPraktikum\\tNeues Arbeitsverhältnis\nDatum: YYYY-MM-DD · Initiativ: ja · Art: Initiativbewerbung · Stelle: Praktikum Fachinformatiker Anwendungsentwicklung · alle Status: nein. Als Codeblock.';}}
+];
+
+function getPrompt(si, f) {
+  var s=STEPS[si];
+  try { return typeof s.prompt==='function' ? s.prompt(f.name,f.quest.extracted,f.quest.contact) : ''; }
+  catch(e) { return '[Fehler: '+e.message+']'; }
+}
+function promptHTML(text) {
+  return esc(text).replace(/\[FIRMA\]/g,'<span class="hl">[FIRMA]</span>')
+    .replace(/\[automatisch aus Schritt 2\]/g,'<span class="gi">[auto Schritt 2]</span>')
+    .replace(/\[Fallback\]/g,'<span class="hl">[Fallback]</span>');
+}
+function refreshAllPrompts(f) {
+  STEPS.forEach(function(_,i){var el=document.getElementById('sp-'+i);if(el)el.innerHTML=promptHTML(getPrompt(i,f));});
+}
+
+// Parse helpers
+function parseVerdict(raw) {
+  if(/✅\s*geeignet/i.test(raw)) return '✅ GEEIGNET';
+  if(/🟡\s*potenziell/i.test(raw)) return '🟡 POTENZIELL';
+  if(/⚠️\s*unklar/i.test(raw)) return '⚠️ UNKLAR';
+  if(/❌/.test(raw)) return '❌ UNGEEIGNET';
+  return '? Nicht erkannt';
+}
+function parseContact(raw) {
+  var m=raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/({\s*"ansprechpartner"[\s\S]*?})/);
+  if(!m) return null;
+  try{var o=JSON.parse(m[1].trim());return typeof o.anrede==='string'?o:null;}catch(e){return null;}
+}
+function extractCode(raw){var m=raw.match(/```[\w]*\n?([\s\S]*?)```/);return m?m[1].trim():raw.trim();}
+
+function saveReturn(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var ta=document.getElementById('sr-'+si); if(!ta) return;
+  var raw=ta.value.trim(); if(!raw){toast('Nichts eingefügt!');return;}
+  var s=STEPS[si]; f.quest.returns[si]=raw;
+  if(s.rt==='verdict'){f.quest.verdict=parseVerdict(raw);f.quest.extracted[si]=f.quest.verdict;updateStatusStrip(f);}
+  else if(s.rt==='contact'){
+    var p=parseContact(raw);
+    if(p){f.quest.contact={ansprechpartner:p.ansprechpartner||'',anrede:p.anrede||'Sehr geehrte Damen und Herren',email:p.email||'',adresse:(p.adresse||'').replace(/\\n/g,'\n')};
+    updateStatusStrip(f);refreshAllPrompts(f);toast('Kontaktdaten eingelesen! ✓');}
+    else{f.quest.extracted[si]=raw;toast('JSON nicht gefunden — gespeichert.');}
+  }
+  else if(s.rt==='text'){f.quest.extracted[si]=extractCode(raw);}
+  else if(s.rt==='anschreiben'){f.quest.extracted[si]=raw.trim();}
+  save(); renderExtracted(si,f);
+  if(si===2||si===3) refreshAllPrompts(f);
+  if(s.rt!=='contact') toast('Gespeichert! ✓');
+  renderQuestOverview(); drawMap();
+}
+
+function renderExtracted(si,f) {
+  var blk=document.getElementById('se-'+si); if(!blk) return;
+  var s=STEPS[si];
+  if(s.rt==='contact'){
+    var c=f.quest.contact;var has=c.ansprechpartner||c.anrede||c.email||c.adresse;
+    blk.classList.toggle('vis',!!has);
+    if(has) blk.querySelector('.exc').innerHTML='<div class="pf-rows">'
+      +'<div class="pf-row"><div class="pf-k">Ansprechpartner</div><div class="pf-v">'+esc(c.ansprechpartner||'—')+'</div></div>'
+      +'<div class="pf-row"><div class="pf-k">Anrede</div><div class="pf-v">'+esc(c.anrede||'Sehr geehrte Damen und Herren')+'</div></div>'
+      +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(c.email||'—')+'</div></div>'
+      +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((c.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
+      +'</div>';
+  } else {
+    var val=f.quest.extracted[si];blk.classList.toggle('vis',!!val);
+    if(val) blk.querySelector('.exc').textContent=val;
+  }
+}
+
+function clearReturn(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var s=STEPS[si];
+  delete f.quest.returns[si]; delete f.quest.extracted[si];
+  if(s.rt==='verdict') f.quest.verdict='';
+  if(s.rt==='contact') f.quest.contact={ansprechpartner:'',anrede:'',email:'',adresse:''};
+  save(); updateStatusStrip(f); refreshAllPrompts(f);
+  openSteps={}; renderQuestSteps(f); toast('Gelöscht.');
+}
+
+function toggleStep(si){
+  var b=document.getElementById('sb-'+si),ch=document.getElementById('sc-'+si);
+  if(!b) return; var open=b.classList.contains('open');
+  b.classList.toggle('open',!open); ch.classList.toggle('open',!open);
+  if(!open) openSteps[si]=true; else delete openSteps[si];
+}
+
+function markDone(si,g) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  f.quest.done[si]=!f.quest.done[si];
+  g.classList.toggle('cl',!!f.quest.done[si]);
+  var card=document.getElementById('ss-'+si);
+  if(card) card.classList.toggle('done',!!f.quest.done[si]);
+  updateProgress(f); save(); renderQuestOverview(); drawMap();
+}
+
+function renderQuestSteps(f){
+  var html='',lp=null;
+  STEPS.forEach(function(s,i){
+    if(s.phase&&s.phase!==lp){lp=s.phase;html+='<div class="phase-banner">'+s.pi+' '+esc(s.phase)+'</div>';}
+    var done=!!f.quest.done[i];
+    var tc=s.tool==='perplexity'?'ts-p':'ts-g';
+    var eu=s.tool==='perplexity'?'https://www.perplexity.ai':'https://chatgpt.com';
+    var hint='';
+    if(i===3&&f.quest.extracted[2]) hint='<div class="inj-badge">◈ Stichpunkte aus Schritt 3 eingebaut</div>';
+    if(i===4&&f.quest.extracted[3]) hint='<div class="inj-badge">◈ Anschreiben aus Schritt 4 eingebaut</div>';
+    if(i===6&&f.quest.contact.anrede) hint='<div class="inj-badge">◈ Anrede aus Schritt 2 eingebaut</div>';
+    var rz='';
+    if(s.rt){
+      var sr=f.quest.returns[i]||'';
+      var hasEx=s.rt==='contact'?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.adresse):f.quest.extracted[i];
+      var exIn='';
+      if(s.rt==='contact'&&(f.quest.contact.ansprechpartner||f.quest.contact.anrede)){
+        var ct=f.quest.contact;
+        exIn='<div class="pf-rows">'
+          +'<div class="pf-row"><div class="pf-k">Ansprechpartner</div><div class="pf-v">'+esc(ct.ansprechpartner||'—')+'</div></div>'
+          +'<div class="pf-row"><div class="pf-k">Anrede</div><div class="pf-v">'+esc(ct.anrede||'Sehr geehrte Damen und Herren')+'</div></div>'
+          +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(ct.email||'—')+'</div></div>'
+          +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((ct.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
+          +'</div>';
+      } else if(f.quest.extracted[i]){ exIn='<div class="exc">'+esc(f.quest.extracted[i])+'</div>'; }
+      rz='<div class="dvd"></div><div class="rzone">'
+        +'<div class="rzl">↵ Ergebnis einfügen</div>'
+        +'<textarea id="sr-'+i+'" rows="3" placeholder="'+esc(s.rh||'Antwort …')+'">'+esc(sr)+'</textarea>'
+        +'<div class="arow" style="margin-top:6px;">'
+        +'<button class="btn btn-v btn-sm" onclick="saveReturn('+i+')">Speichern</button>'
+        +(sr?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Löschen</button>':'')
+        +'</div>'
+        +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte Daten</div>'+exIn+'</div>'
+        +'</div>';
+    }
+    html+='<div class="qstep'+(done?' done':'')+'" id="ss-'+i+'">'
+      +'<div class="shead" onclick="toggleStep('+i+')">'
+      +'<div class="sgem'+(done?' cl':'')+'" id="sg-'+i+'" onclick="event.stopPropagation();markDone('+i+',this)">'+(done?'':(i+1))+'</div>'
+      +'<div class="sinfo"><div class="sname">'+esc(s.name)+'</div><div class="sdesc">'+esc(s.desc)+'</div></div>'
+      +'<span class="tscr '+tc+'">'+esc(s.tl)+'</span>'
+      +'<span class="chev" id="sc-'+i+'">›</span>'
+      +'</div>'
+      +'<div class="sbody'+(openSteps[i]?' open':'')+'" id="sb-'+i+'">'
+      +'<div class="snote">'+esc(s.note)+'</div>'+hint
+      +'<div class="pscr" id="sp-'+i+'">'+promptHTML(getPrompt(i,f))+'</div>'
+      +'<div class="arow">'
+      +'<button class="btn btn-q btn-sm" onclick="copyText(getPrompt('+i+',getFirm(\''+f.id+'\')),this)">Prompt kopieren</button>'
+      +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
+      +'</div>'+rz
+      +'</div></div>';
+  });
+  document.getElementById('qd-steps').innerHTML=html;
+  updateProgress(f);
+}
+
+// ================================================================
+// DATABASE
+// ================================================================
+function renderDBRegionFilter() {
+  var sel=document.getElementById('db-fr'); if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Alle Regionen</option>';
+  S.regions.forEach(function(r){var o=document.createElement('option');o.value=r.name;o.textContent=r.name;sel.appendChild(o);});
+  sel.value=cur;
+}
+
+function renderDB() {
+  var q=(document.getElementById('db-search')||{value:''}).value.toLowerCase();
+  var fs=(document.getElementById('db-fs')||{value:''}).value;
+  var fr=(document.getElementById('db-fr')||{value:''}).value;
+  var grid=document.getElementById('firm-grid'); if(!grid) return;
+  var list=S.firms.filter(function(f){
+    if(q&&!f.name.toLowerCase().includes(q)&&!(f.region||'').toLowerCase().includes(q)) return false;
+    if(fs&&f.status!==fs) return false;
+    if(fr&&f.region!==fr) return false;
+    return true;
+  });
+  if(!list.length){grid.innerHTML='<div class="es">Keine Einträge gefunden.</div>';return;}
+
+  grid.innerHTML=list.map(function(f){
+    var open=!!openFirms[String(f.id)];
+    var sbcl={offen:'sb-o',versendet:'sb-v',absage:'sb-a',zusage:'sb-z'}[f.status]||'sb-o';
+    var sblbl={offen:'Offen',versendet:'Versendet',absage:'Absage',zusage:'Zusage'}[f.status]||f.status;
+    var kbcl={a:'kb-a',b:'kb-b',unklar:'kb-u'}[f.kategorie]||'kb-u';
+    var kblbl={a:'A',b:'B',unklar:'?'}[f.kategorie]||'?';
+    var fccl={'versendet':' sv','absage':' sa','zusage':' sz'}[f.status]||'';
+    return '<div class="fc'+fccl+'" id="fcard-'+f.id+'">'
+      +'<div class="fch" onclick="toggleFC(\''+f.id+'\')">'
+      +'<div class="fcn">'+esc(f.name)+'</div>'
+      +'<span style="font-size:10px;color:var(--ink-light);">'+esc(f.region||'')+'</span>'
+      +'<span class="kba '+kbcl+'">'+kblbl+'</span>'
+      +'<span class="sba '+sbcl+'">'+sblbl+'</span>'
+      +'<span class="chev'+(open?' open':'')+'">›</span>'
+      +'</div>'
+      +'<div class="fcb'+(open?' open':'')+'" id="fcb-'+f.id+'">'
+      +'<div class="fc-grid">'
+      +'<div class="fc-f"><div class="fc-l">Name</div><input class="fc-i" value="'+esc(f.name)+'" onchange="updF(\''+f.id+'\',\'name\',this.value)"/></div>'
+      +'<div class="fc-f"><div class="fc-l">Region</div><select class="fc-sl" onchange="updF(\''+f.id+'\',\'region\',this.value)"><option value=""'+(f.region?'':' selected')+'>—</option>'
+      +S.regions.map(function(r){return '<option value="'+esc(r.name)+'"'+(f.region===r.name?' selected':'')+'>'+esc(r.name)+'</option>';}).join('')
+      +'</select></div>'
+      +'<div class="fc-f"><div class="fc-l">Kategorie</div><select class="fc-sl" onchange="updF(\''+f.id+'\',\'kategorie\',this.value)"><option value="unklar"'+(f.kategorie==='unklar'?' selected':'')+'>Unklar</option><option value="a"'+(f.kategorie==='a'?' selected':'')+'>A — Validiert</option><option value="b"'+(f.kategorie==='b'?' selected':'')+'>B — Prüfbedarf</option></select></div>'
+      +'<div class="fc-f"><div class="fc-l">Status</div><select class="fc-sl" onchange="updF(\''+f.id+'\',\'status\',this.value)"><option value="offen"'+(f.status==='offen'?' selected':'')+'>Offen</option><option value="versendet"'+(f.status==='versendet'?' selected':'')+'>Versendet</option><option value="absage"'+(f.status==='absage'?' selected':'')+'>Absage</option><option value="zusage"'+(f.status==='zusage'?' selected':'')+'>Zusage</option></select></div>'
+      +'<div class="fc-f"><div class="fc-l">Datum</div><input class="fc-i" type="date" value="'+esc(f.bewerbungsDatum)+'" onchange="updF(\''+f.id+'\',\'bewerbungsDatum\',this.value)"/></div>'
+      +'<div class="fc-f"><div class="fc-l">E-Mail</div><input class="fc-i" value="'+esc(f.email)+'" onchange="updF(\''+f.id+'\',\'email\',this.value)"/></div>'
+      +'<div class="fc-f"><div class="fc-l">Ansprechpartner</div><input class="fc-i" value="'+esc(f.ansprechpartner)+'" onchange="updF(\''+f.id+'\',\'ansprechpartner\',this.value)"/></div>'
+      +'<div class="fc-f"><div class="fc-l">Anrede</div><input class="fc-i" value="'+esc(f.anrede)+'" onchange="updF(\''+f.id+'\',\'anrede\',this.value)"/></div>'
+      +'<div class="fc-f full"><div class="fc-l">Adresse</div><textarea class="fc-t" rows="3" onchange="updF(\''+f.id+'\',\'adresse\',this.value)">'+esc(f.adresse)+'</textarea></div>'
+      +'<div class="fc-f full"><div class="fc-l">Anschreiben-Satz</div><textarea class="fc-t" rows="2" onchange="updF(\''+f.id+'\',\'anschreibenSatz\',this.value)">'+esc(f.anschreibenSatz)+'</textarea></div>'
+      +'<div class="fc-f full"><div class="fc-l">Eignungsurteil</div><input class="fc-i" value="'+esc(f.eignungsurteil)+'" onchange="updF(\''+f.id+'\',\'eignungsurteil\',this.value)"/></div>'
+      +'<div class="fc-f full"><div class="fc-l">Stichpunkte</div><textarea class="fc-t" rows="3" onchange="updF(\''+f.id+'\',\'stichpunkte\',this.value)">'+esc(f.stichpunkte)+'</textarea></div>'
+      +'<div class="fc-f full"><div class="fc-l">Notizen</div><textarea class="fc-t" rows="2" onchange="updF(\''+f.id+'\',\'notizen\',this.value)">'+esc(f.notizen)+'</textarea></div>'
+      +'</div>'
+      +'<div class="arow"><button class="btn btn-q btn-sm" onclick="loadToQuest(\''+f.id+'\')">In Quest laden ⚔</button><button class="btn btn-d btn-sm" onclick="delFirm(\''+f.id+'\')">Löschen</button></div>'
+      +'</div></div>';
+  }).join('');
+}
+
+function toggleFC(id){
+  var b=document.getElementById('fcb-'+id); if(!b) return;
+  var hd=b.previousElementSibling;
+  var open=b.classList.contains('open');
+  b.classList.toggle('open',!open);
+  var ch=hd?hd.querySelector('.chev'):null; if(ch) ch.classList.toggle('open',!open);
+  if(!open) openFirms[String(id)]=true; else delete openFirms[String(id)];
+}
+function updF(id,field,val){
+  var f=getFirm(id); if(!f) return; f[field]=val; save();
+}
+function addFirm(){ var f=newFirm('Neue Firma'); S.firms.unshift(f); save(); openFirms[String(f.id)]=true; renderDB(); toast('Neuer Eintrag.'); }
+function delFirm(id){ if(!confirm('Eintrag löschen?')) return; S.firms=S.firms.filter(function(f){return String(f.id)!==String(id);}); delete openFirms[String(id)]; save(); renderDB(); drawMap(); toast('Gelöscht.'); }
+function loadToQuest(id){ activeQuestFirmId=id; openQuestDetail(id); switchTab('quest'); }
+
+function exportDB(){
+  var blob=new Blob([JSON.stringify(S.firms,null,2)],{type:'application/json'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Firmen_'+today()+'.json';a.click();
+}
+function exportCSV(){
+  var cols=['name','region','kategorie','status','bewerbungsDatum','email','ansprechpartner','anrede','adresse','eignungsurteil','anschreibenSatz','notizen'];
+  var rows=['\uFEFF'+cols.join(';')].concat(S.firms.map(function(f){return cols.map(function(k){return '"'+(f[k]||'').replace(/\n/g,' | ').replace(/"/g,'""')+'"';}).join(';');}));
+  var blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Firmen_'+today()+'.csv';a.click();
+}
+function openImport(){ openModal('import-modal'); }
+function doImport(){
+  var raw=document.getElementById('import-ta').value.trim();
+  try{
+    var parsed=JSON.parse(raw.replace(/^\uFEFF/,''));
+    // Accept full backup or bare array
+    var arr=Array.isArray(parsed)?parsed:(parsed.firms||[]);
+    if(!arr.length) throw new Error('Keine Firmen gefunden');
+    var add=0,upd=0;
+    arr.forEach(function(item){
+      if(!item.name) return;
+      var ex=findByName(item.name);
+      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();upd++;}
+      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:item.quest||defaultQuest()}));add++;}
+    });
+    save();closeModal('import-modal');renderDB();drawMap();toast('Import: '+add+' neu, '+upd+' aktualisiert');
+  }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
+}
+
+// ================================================================
+// RESEARCH
+// ================================================================
+function renderResearchChips(){
+  var sent=S.firms.filter(function(f){return ['versendet','absage','zusage'].includes(f.status);});
+  var el=document.getElementById('sent-chips');
+  if(el)el.innerHTML=sent.length?sent.map(function(f){return '<span class="chip sent">'+esc(f.name)+'</span>';}).join(''):'<span class="chip">— keine versendeten</span>';
+}
+function genRPrompt(){
+  var region=document.getElementById('r-region').value;
+  var focus=document.getElementById('r-focus').value;
+  var size=document.getElementById('r-size').value;
+  var sent=S.firms.filter(function(f){return ['versendet','absage','zusage'].includes(f.status);});
+  var sentList=sent.length?sent.map(function(f){return '- '+f.name;}).join('\n'):'— keine';
+  _rPrompt='Du bist Recherche-Assistent für eine FIAE-Praktikumssuche.\n\nFinde IT-Unternehmen in der Region '+region+' die als Praktikumsbetrieb für eine Umschulung zum Fachinformatiker für Anwendungsentwicklung geeignet sind.\n\nAnforderungen:\n- Tätigkeitsfeld: Softwareentwicklung, '+focus+'\n- Unternehmensgröße: '+size+'\n- IHK-Ausbildungsbetrieb oder IT-Ausbildungsnachweis\n- Realer Präsenzstandort\n\nBereits angeschrieben — NICHT nennen:\n'+sentList+'\n\nPro Firma: Name + Adresse + Region · Warum geeignet (1–2 Sätze) · Tech-Stack · Kategorie A/B · Quelle(n)\nMindestens 10 Firmen. Nur Websuche.';
+  document.getElementById('r-pb').textContent=_rPrompt;
+  document.getElementById('r-pw').style.display='block';
+}
+function cpRPrompt(btn){copyText(_rPrompt,btn);}
+function genClean(){
+  var raw=document.getElementById('r-raw').value.trim();
+  if(!raw){toast('Research-Ergebnis fehlt.');return;}
+  var existing=S.firms.map(function(f){return f.name;}).join(', ')||'—';
+  _cleanPrompt='Strukturiere dieses FIAE-Praktikums-Recherche-Ergebnis als JSON-Array.\n\nResearch:\n---\n'+raw+'\n---\n\nBereits in DB (nicht doppelt): '+existing+'\n\nNur den JSON-Array ausgeben:\n```json\n[{"name":"Firma GmbH","region":"Bremen","kategorie":"a","status":"offen","adresse":"Firma GmbH\\nStraße\\nPLZ Ort","email":"","ansprechpartner":"","anrede":"Sehr geehrte Damen und Herren","eignungsurteil":"","stichpunkte":"","anschreibenSatz":"","notizen":"","bewerbungsDatum":""}]\n```';
+  document.getElementById('r-cb').textContent=_cleanPrompt;
+  document.getElementById('r-cw').style.display='block';
+  document.getElementById('r-jw').style.display='block';
+}
+function cpClean(btn){copyText(_cleanPrompt,btn);}
+function importJSON(){
+  var raw=document.getElementById('r-json').value.trim();
+  try{
+    var m=raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/```\s*(\[[\s\S]*?\])\s*```/)||[null,raw];
+    var arr=JSON.parse((m[1]||raw).trim().replace(/^\uFEFF/,''));
+    if(!Array.isArray(arr)) throw new Error('Kein Array');
+    var add=0,upd=0;
+    arr.forEach(function(item){
+      if(!item.name) return;
+      var ex=findByName(item.name);
+      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();upd++;}
+      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:defaultQuest()}));add++;}
+    });
+    save();drawMap();document.getElementById('r-json').value='';
+    toast('Importiert: '+add+' neu, '+upd+' aktualisiert');
+  }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
+}
+
+// ================================================================
+// SETTINGS
+// ================================================================
+function getCfg() { return Object.assign({},CFG_DEFAULTS,S.cfg||{}); }
+function saveCfg(){
+  if(!S.cfg) S.cfg={};
+  ['name','traeger','beruf','von','bis'].forEach(function(k){
+    var el=document.getElementById('cfg-'+k);
+    if(el&&el.value) S.cfg[k]=el.value;
+  });
+  save();
+}
+function saveCfgConfirm(){
+  saveCfg();
+  var el=document.getElementById('cfg-saved');el.style.display='inline';
+  setTimeout(function(){el.style.display='none';},2000);
+  toast('Einstellungen gespeichert.');
+}
+function loadCfgUI(){
+  var cfg=getCfg();
+  ['name','traeger','beruf','von','bis'].forEach(function(k){
+    var el=document.getElementById('cfg-'+k);if(el)el.value=cfg[k]||'';
+  });
+}
+function updateInfoPanel(){
+  function set(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
+  set('info-firms',S.firms.length+' Einträge');
+  set('info-sent',S.firms.filter(function(f){return['versendet','absage','zusage'].includes(f.status);}).length+' Firmen');
+  set('info-regions',S.regions.length+' Regionen');
+  try{set('info-size',((localStorage.getItem(LS)||'').length/1024).toFixed(1)+' KB');}catch(e){set('info-size','—');}
+}
+function populateTrackFirmSel(){
+  var sel=document.getElementById('track-firm-sel');if(!sel) return;
+  sel.innerHTML='<option value="all">Alle versendeten</option>';
+  S.firms.filter(function(f){return['versendet','absage','zusage'].includes(f.status);}).forEach(function(f){
+    var o=document.createElement('option');o.value=String(f.id);o.textContent=f.name;sel.appendChild(o);
+  });
+}
+function genTrackingSel(){
+  var sel=document.getElementById('track-firm-sel');
+  var val=sel?sel.value:'all';
+  var firms=val==='all'?S.firms.filter(function(f){return['versendet','absage','zusage'].includes(f.status);}):S.firms.filter(function(f){return String(f.id)===val;});
+  if(!firms.length){toast('Keine passenden Einträge.');return;}
+  _track2Text=firms.map(function(f){return[f.bewerbungsDatum||today(),'ja','Initiativbewerbung',f.name+(f.adresse?', '+(f.adresse.split('\n').pop()||''):''),'Praktikum Fachinformatiker Anwendungsentwicklung',f.status==='absage'?'ja':'nein','nein','nein','nein'].join('\t');}).join('\n');
+  document.getElementById('track-txt2').textContent=_track2Text;
+  document.getElementById('track-out2').style.display='block';
+  document.getElementById('btn-cp-track2').style.display='inline-flex';
+}
+function cpTrack2(btn){copyText(_track2Text,btn);}
+function exportAll(){
+  var data={version:6,exportDate:today(),cfg:S.cfg||{},regions:S.regions,firms:S.firms,_lastExported:S._lastExported};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Quest_Backup_'+today()+'.json';a.click();
+}
+function resetAllQuests(){
+  if(!confirm('Alle Quest-Fortschritte löschen? Firmendaten bleiben erhalten.')) return;
+  S.firms.forEach(function(f){f.quest=defaultQuest();});
+  save();toast('Quest-Fortschritte zurückgesetzt.');renderQuestOverview();drawMap();
+}
+function resetAll(){
+  if(!confirm('WIRKLICH ALLES LÖSCHEN? Nicht rückgängig.')) return;
+  if(!confirm('Letzte Chance: Alle Firmen, Regionen und Einstellungen werden gelöscht.')) return;
+  localStorage.removeItem(LS);S=defaultS();S.cfg={};
+  save();loadCfgUI();renderQuestOverview();renderDB();drawMap();toast('Alle Daten gelöscht.');
+}
+
+// ================================================================
+// GITHUB GIST SYNC
+// ================================================================
+function gistGetToken(){ return localStorage.getItem(GIST_TOKEN_KEY)||''; }
+function gistGetId(){ return localStorage.getItem(GIST_ID_KEY)||''; }
+function gistGetAuto(){ return localStorage.getItem(GIST_AUTO_KEY)==='1'; }
+
+function saveGistCfg(){
+  var t=document.getElementById('gist-token'); if(t) localStorage.setItem(GIST_TOKEN_KEY,t.value);
+  var i=document.getElementById('gist-id'); if(i) localStorage.setItem(GIST_ID_KEY,i.value);
+  var a=document.getElementById('gist-auto'); if(a) localStorage.setItem(GIST_AUTO_KEY,a.checked?'1':'0');
+  setSyncStatus('', false, false);
+}
+function loadGistCfgUI(){
+  var t=document.getElementById('gist-token'); if(t) t.value=gistGetToken();
+  var i=document.getElementById('gist-id'); if(i) i.value=gistGetId();
+  var a=document.getElementById('gist-auto'); if(a) a.checked=gistGetAuto();
+  setSyncStatus(gistGetToken()&&gistGetId()?'Konfiguriert':'Nicht konfiguriert',!!gistGetToken()&&!!gistGetId(),false);
+}
+function setSyncStatus(msg,ok,busy){
+  var dot=document.getElementById('sync-dot');var msgEl=document.getElementById('sync-msg');
+  if(!dot||!msgEl) return;
+  dot.className='sync-dot'+(busy?' busy':ok?' ok':gistGetToken()&&gistGetId()?'':' err');
+  msgEl.textContent=msg;
+}
+
+function gistBuildPayload(){
+  return {version:6,exported:new Date().toISOString(),cfg:S.cfg||{},regions:S.regions,firms:S.firms};
+}
+
+function gistAutoSyncDebounced(){
+  if(!gistGetAuto()||!gistGetToken()||!gistGetId()) return;
+  if(gistAutoSyncTimer) clearTimeout(gistAutoSyncTimer);
+  gistAutoSyncTimer=setTimeout(function(){gistAutoSyncTimer=null;gistDoPush(true);},30000);
+}
+
+function gistPush(silent){
+  var token=gistGetToken(),id=gistGetId();
+  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
+  setSyncStatus('Prüfe Cloud …',true,true);
+  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
+  .then(function(r){return r.json();})
+  .then(function(gist){
+    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+    if(!file||!file.content){gistDoPush(silent);return;}
+    var cloudData;try{cloudData=JSON.parse(file.content);}catch(e){gistDoPush(silent);return;}
+    if((cloudData.exported||'')>(S._lastExported||'')){
+      if(silent){toast('☁ Cloud ist neuer — kein Auto-Push.');setSyncStatus('Cloud neuer',true,false);return;}
+      if(confirm('Cloud-Version ist neuer als lokale Version.\n\nTrotzdem hochladen und Cloud überschreiben?')){gistDoPush(false);}
+      else{gistApplyData(cloudData);toast('⬇ Cloud-Version geladen.');}
+    } else {gistDoPush(silent);}
+  })
+  .catch(function(e){setSyncStatus('Fehler: '+e.message.slice(0,30),false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
+}
+
+function gistDoPush(silent){
+  var token=gistGetToken(),id=gistGetId();
+  setSyncStatus('Hochladen …',true,true);
+  fetch('https://api.github.com/gists/'+id,{
+    method:'PATCH',
+    headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(gistBuildPayload(),null,2)}}})
+  })
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);setSyncStatus('Synchronisiert ✓',true,false);if(!silent)toast('☁ Hochgeladen!');})
+  .catch(function(e){setSyncStatus('Fehler',false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
+}
+
+function gistPull(silent){
+  var token=gistGetToken(),id=gistGetId();
+  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
+  setSyncStatus('Herunterladen …',true,true);
+  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
+  .then(function(r){return r.json();})
+  .then(function(gist){
+    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+    if(!file||!file.content){toast('Gist-Datei nicht gefunden.');setSyncStatus('Fehler',false,false);return;}
+    var data;try{data=JSON.parse(file.content);}catch(e){toast('JSON-Fehler im Gist.');return;}
+    if(!silent&&(data.exported||'')<=(S._lastExported||'')){
+      if(!confirm('Lokale Version ist aktueller. Trotzdem überschreiben?')) return;
+    }
+    gistApplyData(data);
+    setSyncStatus('Heruntergeladen ✓',true,false);
+    if(!silent) toast('⬇ Daten aus Gist geladen!');
+  })
+  .catch(function(e){setSyncStatus('Fehler',false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
+}
+
+function gistMerge(){
+  var token=gistGetToken(),id=gistGetId();
+  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
+  setSyncStatus('Merge …',true,true);
+  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
+  .then(function(r){return r.json();})
+  .then(function(gist){
+    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+    if(!file||!file.content){toast('Gist-Datei nicht gefunden.');return;}
+    var data;try{data=JSON.parse(file.content);}catch(e){toast('JSON-Fehler im Gist.');return;}
+    var remoteFirms=data.firms||[];
+    var added=0;
+    remoteFirms.forEach(function(rf){
+      var ex=findByName(rf.name);
+      if(!ex){S.firms.push(Object.assign(newFirm(rf.name),rf,{quest:rf.quest||defaultQuest()}));added++;}
+    });
+    save();renderDB();drawMap();
+    setSyncStatus('Merge ✓ (+'+added+')',true,false);
+    toast('Merge: '+added+' neue Einträge hinzugefügt.');
+  })
+  .catch(function(e){setSyncStatus('Fehler',false,false);toast('Gist-Fehler: '+e.message.slice(0,40));});
+}
+
+function gistApplyData(data){
+  if(data.firms) S.firms=data.firms.map(function(f){f.quest=f.quest||defaultQuest();return f;});
+  if(data.regions&&data.regions.length) S.regions=data.regions;
+  if(data.cfg) S.cfg=data.cfg;
+  S._lastExported=data.exported||new Date().toISOString();
+  save(); renderDB(); drawMap(); renderQuestOverview();
+  if(currentTab==='settings') updateInfoPanel();
+}
+
+function gistStartupSync(){
+  var token=gistGetToken(),id=gistGetId();
+  if(!token||!id||!gistGetAuto()) return;
+  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
+  .then(function(r){return r.json();})
+  .then(function(gist){
+    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+    if(!file||!file.content) return;
+    var data;try{data=JSON.parse(file.content);}catch(e){return;}
+    if((data.exported||'')>(S._lastExported||'')) gistApplyData(data);
+  })
+  .catch(function(){});
+}
+
+// ================================================================
+// SEED DATA
+// ================================================================
+var SEED=[
+  {name:'BTC AG',region:'Oldenburg',kategorie:'a',status:'versendet',adresse:'BTC Business Technology Consulting AG\nEscherweg 5\n26121 Oldenburg',email:'bewerbung@btc-ag.com',ansprechpartner:'',anrede:'Sehr geehrte Frau Janßen',anschreibenSatz:'Besonders beeindruckt hat mich Ihr spezifisches Angebot für Umschüler sowie die Möglichkeit, im Rahmen Ihres IT-Bootcamps in einer professionellen „Software Factory" an anspruchsvollen Java- und Cloud-Projekten zu arbeiten.',stichpunkte:'Java, C#, ABAP, Cloud (Azure/AWS), Scrum. Explizites Umschüler-Programm.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'Weltenretter',region:'Oldenburg',kategorie:'a',status:'versendet',adresse:'Weltenretter\nUnterm Berg 20\n26123 Oldenburg',email:'info@weltenretter.eu',ansprechpartner:'',anrede:'Sehr geehrtes Team von Weltenretter',anschreibenSatz:'Da Sie explizit Plätze für das Fachpraktikum im Rahmen einer Umschulung anbieten und eine aktive Unterstützung bei der Strukturierung des IHK-Abschlussprojekts zusichern, sehe ich bei Ihnen das ideale Umfeld für meinen Berufsabschluss.',stichpunkte:'C#, PHP, WordPress, SQL, Git. Explizite Umschüler-Plätze.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'worldiety',region:'Oldenburg',kategorie:'a',status:'versendet',adresse:'worldiety GmbH\nNordseestraße 2\n26131 Oldenburg',email:'info@worldiety.de',ansprechpartner:'Torben Schinke',anrede:'Sehr geehrter Herr Schinke',anschreibenSatz:'Als von der Oldenburgischen IHK mit dem Siegel „TOP AUSBILDUNG" ausgezeichneter Ausbildungsbetrieb bietet worldiety die ideale Umgebung für agile App-Entwicklung.',stichpunkte:'Scrum, Design Patterns, App- und Web-Lösungen. IHK Top-Ausbildungsbetrieb.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'ATLAS ELEKTRONIK',region:'Bremen',kategorie:'a',status:'versendet',adresse:'ATLAS ELEKTRONIK GmbH\nSebaldsbrücker Heerstraße 235\n28309 Bremen',email:'praktikanten@atlas-elektronik.com',ansprechpartner:'Frau Stelljes',anrede:'Sehr geehrte Frau Stelljes',anschreibenSatz:'ATLAS ELEKTRONIK entwickelt komplexe Software- und Systemlösungen für maritime Anwendungen.',stichpunkte:'C++, Java, Python. SONAR, maritim. TKMS-Tochter.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'CGI',region:'Bremen',kategorie:'a',status:'versendet',adresse:'CGI Deutschland B.V. & Co. KG\nKranhaus\nHoerneckestraße 39\n28217 Bremen',email:'jobs.de@cgi.com',ansprechpartner:'Florian Schlüter',anrede:'Sehr geehrter Herr Schlüter',anschreibenSatz:'Besonders reizvoll an CGI ist die Verbindung aus globaler Marktpräsenz und Ihrem Standort in Bremen.',stichpunkte:'Java, C#, .NET, Cloud, Scrum. Software Development Center Bremen.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'erminas GmbH',region:'Oldenburg',kategorie:'a',status:'offen',adresse:'erminas GmbH\nAugust-Hanken-Str. 24\n26125 Oldenburg',email:'bewerbung@erminas.de',ansprechpartner:'Herr Bunjes',anrede:'Sehr geehrter Herr Bunjes',anschreibenSatz:'Ihr Fokus auf Industrial IoT und Backend-Entwicklung mit C# reizt mich besonders.',stichpunkte:'C#, Python, TypeScript, SQL, Angular. Industrial IoT.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'AMCON Software',region:'Oldenburg',kategorie:'a',status:'offen',adresse:'AMCON Software GmbH\nOsterstraße 15\n49661 Cloppenburg',email:'bewerbung@amcon.de',ansprechpartner:'Frau Tolzmann',anrede:'Sehr geehrte Frau Tolzmann',anschreibenSatz:'Die AMCON.ACADEMY und Expertise bei Ticketing-Systemen für den ÖPNV machen Ihr Unternehmen zum erstklassigen FIAE-Partner.',stichpunkte:'Java, Python, C#. ÖPNV-Software. IHK-Kammersieger.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'CEWE',region:'Oldenburg',kategorie:'a',status:'offen',adresse:'CEWE Stiftung & Co. KGaA\nMeerweg 30-32\n26133 Oldenburg',email:'jobs@cewe.de',ansprechpartner:'Frau Kansy',anrede:'Sehr geehrte Frau Kansy',anschreibenSatz:'Als Marktführer bietet CEWE die Chance, in einem hochskalierbaren Umfeld an SaaS-Lösungen mitzuwirken.',stichpunkte:'Backend/Frontend. SaaS. Große IT-Abteilung.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'SECTOR NORD AG',region:'Oldenburg',kategorie:'a',status:'offen',adresse:'SECTOR NORD AG\nEdewechter Landstraße 123\n26131 Oldenburg',email:'jobs@sectornord.de',ansprechpartner:'Frau Schäfer',anrede:'Sehr geehrte Frau Schäfer',anschreibenSatz:'Die direkte Einbindung in produktive Kundenprojekte bei IT-Monitoring fasziniert mich.',stichpunkte:'PHP, Perl, JavaScript. IT-Monitoring.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'Linstep Software',region:'Oldenburg',kategorie:'a',status:'offen',adresse:'Linstep Software GmbH\nAlexanderstraße 316\n26127 Oldenburg',email:'vertrieb@linstep.de',ansprechpartner:'Herr Bohlen',anrede:'Sehr geehrter Herr Bohlen',anschreibenSatz:'Linux-basierte Individualsoftware zur Digitalisierung von Geschäftsprozessen bietet eine technisch anspruchsvolle Basis.',stichpunkte:'Linux, PHP, Java. Individualsoftware.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'HEC GmbH (team neusta)',region:'Bremen',kategorie:'a',status:'offen',adresse:'HEC GmbH (team neusta)\nKonsul-Smidt-Straße 24\n28217 Bremen',email:'info@it-bildungshaus.de',ansprechpartner:'Frau Laue',anrede:'Sehr geehrte Frau Laue',anschreibenSatz:'Das IT-Bildungshaus und konsequente Scrum-Ausrichtung machen HEC zum profiliertesten Bremer Umschulungspartner.',stichpunkte:'Scrum, agile Methoden. IT-Bildungshaus.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'encoway GmbH',region:'Bremen',kategorie:'a',status:'offen',adresse:'encoway GmbH\nKonrad-Zuse-Str. 6\n28359 Bremen',email:'bewerbung@encoway.de',ansprechpartner:'Frau Schnakenberg',anrede:'Sehr geehrte Frau Schnakenberg',anschreibenSatz:'Das Mentorenprogramm und Java/Web-Fokus für CPQ-Lösungen bieten die ideale fachliche Tiefe.',stichpunkte:'Java, Web. CPQ-Lösungen. Mentorenprogramm.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'dbh Logistics IT AG',region:'Bremen',kategorie:'a',status:'offen',adresse:'dbh Logistics IT AG\nMartinsstraße 1\n28195 Bremen',email:'karriere@dbh.de',ansprechpartner:'',anrede:'Sehr geehrtes Recruiting-Team',anschreibenSatz:'Logistik- und Zoll-Software für das Rückgrat der globalen Handelswirtschaft — motivierendes Umfeld.',stichpunkte:'Logistik/Zoll-Software. FIAE-Ausbildung.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'OHB SE',region:'Bremen',kategorie:'a',status:'offen',adresse:'OHB SE\nManfred-Fuchs-Platz 2-4\n28359 Bremen',email:'career@ohb.de',ansprechpartner:'Herr Bartels',anrede:'Sehr geehrter Herr Bartels',anschreibenSatz:'Softwareentwicklung im Kontext internationaler Raumfahrtprojekte ist hochgradig motivierend.',stichpunkte:'Raumfahrt-IT. Systemkonzeption bis IT-Service.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'Rheinmetall Electronics',region:'Bremen',kategorie:'a',status:'offen',adresse:'Rheinmetall Electronics GmbH\nBrüggeweg 54\n28309 Bremen',email:'career-bremen@rheinmetall.com',ansprechpartner:'Frau Simpich',anrede:'Sehr geehrte Frau Simpich',anschreibenSatz:'Simulationstechnik, Cyber Security und strukturierte Prüfungsvorbereitung garantieren höchstes fachliches Niveau.',stichpunkte:'Simulationstechnik, Cyber Security.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'Governikus GmbH & Co. KG',region:'Bremen',kategorie:'a',status:'offen',adresse:'Governikus GmbH & Co. KG\nHochschulring 4\n28359 Bremen',email:'karriere@governikus.de',ansprechpartner:'Frau Meyer',anrede:'Sehr geehrte Frau Meyer',anschreibenSatz:'Als Marktführer für E-Government bietet Governikus ein technisch spannendes Java-EE-Umfeld.',stichpunkte:'Java EE. E-Government. Digitale Souveränität.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'atacama | Software GmbH',region:'Bremen',kategorie:'a',status:'offen',adresse:'atacama | Software GmbH\nHildegard-von-Bingen-Straße 5\n28359 Bremen',email:'jobs@atacama.de',ansprechpartner:'Frau Haab',anrede:'Sehr geehrte Frau Haab',anschreibenSatz:'Wissensmanagement-Software für das Gesundheitswesen in Java — gesellschaftlich relevant.',stichpunkte:'Java. Wissensmanagement, Gesundheitswesen.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'benntec Systemtechnik',region:'Bremen',kategorie:'a',status:'offen',adresse:'benntec Systemtechnik GmbH\nBrüggeweg 46\n28309 Bremen',email:'bewerbung@benntec.de',ansprechpartner:'Frau Holler',anrede:'Sehr geehrte Frau Holler',anschreibenSatz:'Individuelle Trainingstechnologien und Flugsimulationen bieten ein einzigartiges Feld für komplexe Softwarearchitekturen.',stichpunkte:'Simulationssoftware, Flugsimulationen.',eignungsurteil:'✅ GEEIGNET'},
+  {name:'DATAGROUP Bremen',region:'Bremen',kategorie:'a',status:'offen',adresse:'DATAGROUP Bremen GmbH\nUniversitätsallee 5\n28359 Bremen',email:'bewerbung@datagroup.de',ansprechpartner:'',anrede:'Sehr geehrtes Recruiting-Team',anschreibenSatz:'Offenheit gegenüber Quereinsteigern und strukturierte Langzeitpraktika machen DATAGROUP attraktiv.',stichpunkte:'IT-Dienstleistungen. Quereinsteiger-freundlich.',eignungsurteil:'✅ GEEIGNET'}
+];
+
+function seedIfEmpty(){
+  if(S.firms.length===0){
+    S.firms=SEED.map(function(f){return Object.assign(newFirm(f.name),f,{id:uid(),quest:defaultQuest()});});
+    save();
+  }
+}
+
+// ================================================================
+// INIT
+// ================================================================
+load();
+seedIfEmpty();
+loadCfgUI();
+renderTabs();
+renderDBRegionFilter();
+renderQuestOverview();
+setTimeout(function(){ drawMap(); gistStartupSync(); }, 400);
+window.addEventListener('resize', function(){
+  if(currentTab==='map') drawMap();
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('sw.js').catch(function() {});
+  });
+}
+</script>
+</body>
+</html>
