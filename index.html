@@ -397,6 +397,82 @@ textarea{resize:vertical;min-height:80px;}
 .info-k{font-size:11px;font-weight:700;color:var(--ink-light);width:170px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}
 .info-v{font-size:13px;color:var(--ink);font-family:monospace;}
 
+/* === STEP STATUS BADGES === */
+.sstatus{
+  font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;border:1px solid;
+  font-family:var(--body);white-space:nowrap;cursor:pointer;transition:all .15s;
+}
+.ss-offen{background:rgba(85,85,119,.15);color:var(--ink-dim);border-color:var(--border);}
+.ss-begonnen{background:rgba(255,179,71,.12);color:var(--gold);border-color:var(--gold);}
+.ss-rohentwurf{background:rgba(52,152,219,.12);color:var(--blue);border-color:var(--blue);}
+.ss-geprueft{background:rgba(26,188,156,.12);color:var(--teal);border-color:var(--teal);}
+.ss-erledigt{background:rgba(46,204,113,.15);color:var(--green);border-color:var(--green-dark);}
+
+/* === NEXT-QUEST WIDGET === */
+.nq-card{
+  background:linear-gradient(135deg,rgba(155,89,182,.12),rgba(52,152,219,.08));
+  border:1px solid var(--purple);border-radius:8px;padding:14px 16px;
+  display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:12px;
+  transition:border-color .2s,transform .1s;
+}
+.nq-card:hover{border-color:var(--gold);transform:translateY(-1px);}
+.nq-icon{font-size:28px;flex-shrink:0;}
+.nq-body{flex:1;min-width:0;}
+.nq-firm{font-family:var(--body);font-weight:800;font-size:14px;color:var(--gold);}
+.nq-step{font-size:12px;color:var(--ink-light);margin-top:3px;}
+.nq-hint{font-size:11px;color:var(--purple-light);margin-top:4px;font-style:italic;}
+.nq-arrow{font-size:22px;color:var(--purple-light);flex-shrink:0;}
+
+/* === BAUSTEIN PANEL === */
+.bpanel{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;}
+.bpanel-head{
+  padding:10px 14px;background:var(--surface-3);display:flex;align-items:center;gap:8px;
+  cursor:pointer;user-select:none;
+}
+.bpanel-title{font-family:var(--body);font-weight:800;font-size:13px;color:var(--teal);flex:1;text-transform:uppercase;letter-spacing:.5px;}
+.bpanel-body{display:none;padding:12px 14px;}
+.bpanel-body.open{display:block;}
+.baustein-grid{display:flex;flex-direction:column;gap:10px;}
+.baustein-item{display:flex;flex-direction:column;gap:3px;}
+.baustein-label{font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;letter-spacing:.4px;}
+.baustein-status{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;}
+.bst-leer{background:rgba(85,85,119,.2);color:var(--ink-dim);}
+.bst-ok{background:rgba(46,204,113,.15);color:var(--green);}
+.baustein-ta{font-size:13px;padding:8px 10px;min-height:60px;}
+.md-preview{
+  background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:6px;
+  padding:12px;font-size:12px;color:var(--ink);line-height:1.7;
+  white-space:pre-wrap;font-family:monospace;margin-top:8px;max-height:300px;overflow-y:auto;
+}
+
+/* === MOBILE BOTTOM ACTION BAR === */
+#mobile-bottom-bar{
+  display:none;position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:var(--bg-mid);border-top:1px solid var(--border);
+  padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom));
+}
+@media(max-width:767px){
+  #mobile-bottom-bar{display:flex;gap:8px;align-items:center;}
+  #app{padding-bottom:80px;}
+}
+.mba-btn{
+  flex:1;font-family:var(--body);font-weight:700;font-size:13px;
+  padding:10px 8px;border:none;border-radius:8px;cursor:pointer;
+  min-height:44px;display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.mba-next{background:var(--surface-3);border:1px solid var(--border-light);color:var(--ink-light);}
+.mba-next:hover{border-color:var(--purple);}
+
+/* === INTAKE IMPROVED === */
+.intake-result{
+  background:rgba(46,204,113,.06);border:1px solid var(--green-dark);border-radius:8px;
+  padding:12px 14px;margin-top:10px;display:none;
+}
+.intake-result.vis{display:block;}
+.intake-row{display:flex;gap:10px;margin-bottom:5px;font-size:12px;}
+.intake-k{font-weight:700;width:90px;flex-shrink:0;color:var(--ink-light);}
+.intake-v{color:var(--ink);}
+
 /* === GIST SYNC === */
 .sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .sync-status{
@@ -466,6 +542,7 @@ textarea{resize:vertical;min-height:80px;}
     <!-- QUESTS -->
     <div class="panel" id="panel-quest">
       <div id="quest-overview-wrap">
+        <div id="next-quest-widget"></div>
         <div class="qs">
           <div class="qh">⚔ Aktive Quests <div style="flex:1"></div><button class="btn btn-sm btn-v" onclick="switchTab('db')">+ Neue Firma →</button></div>
           <div class="quest-overview" id="quest-overview"></div>
@@ -512,6 +589,25 @@ textarea{resize:vertical;min-height:80px;}
           </div>
         </div>
         <div id="qd-steps"></div>
+        <!-- Baustein-Speicher -->
+        <div class="bpanel" id="baustein-panel">
+          <div class="bpanel-head" onclick="toggleBausteine()">
+            <div class="bpanel-title">📦 Baustein-Speicher</div>
+            <span id="baustein-fill-count" style="font-size:11px;color:var(--teal);"></span>
+            <span class="chev" id="baustein-chev">›</span>
+          </div>
+          <div class="bpanel-body" id="baustein-body">
+            <div class="notice info" style="margin-bottom:12px;">Speichere hier vorbereitete Bausteine für das finale Anschreiben am PC. Jeder Baustein kann unterwegs in 2–5 Min. vorbereitet werden.</div>
+            <div class="baustein-grid" id="baustein-grid"></div>
+            <div class="dvd"></div>
+            <div class="qh" style="font-size:11px;margin-top:0;margin-bottom:8px;">📄 Markdown-Vorschau</div>
+            <div class="arow">
+              <button class="btn btn-t btn-sm" onclick="genMarkdown()">Vorschau generieren</button>
+              <button class="btn btn-q btn-sm" onclick="copyMarkdown(this)" id="btn-copy-md" style="display:none;">Kopieren</button>
+            </div>
+            <div class="md-preview" id="md-preview" style="display:none;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -561,7 +657,19 @@ textarea{resize:vertical;min-height:80px;}
         </div>
       </div>
       <div class="qs">
-        <div class="qh">🔄 Bereinigung & Import</div>
+        <div class="qh">📥 Direkter Research-Intake</div>
+        <div class="notice">Füge hier Ergebnisse aus Deep Research, Firmenlisten oder rohe Texte ein. Die App erkennt bekannte Firmen und legt neue automatisch an.</div>
+        <label>Rohdaten (Text, JSON-Array oder gemischt)</label>
+        <textarea id="intake-raw" rows="5" placeholder="Firmenliste, Deep Research Ergebnis, JSON …"></textarea>
+        <div class="arow" style="margin-top:8px;">
+          <button class="btn btn-v" onclick="runDirectIntake()">Analysieren & Importieren</button>
+          <button class="btn btn-m" onclick="genIntakePrompt()">Aufbereitungs-Prompt generieren</button>
+        </div>
+        <div class="intake-result" id="intake-result">
+          <div class="qh" style="font-size:11px;margin-bottom:8px;">Import-Zusammenfassung</div>
+          <div id="intake-summary"></div>
+        </div>
+      </div>
         <div class="notice">Research-Ergebnis einfügen → Bereinigungsprompt → ChatGPT → JSON → DB.</div>
         <label>Schritt 1 — Research-Ergebnis</label>
         <textarea id="r-raw" rows="4" placeholder="Perplexity Deep Research Ergebnis …"></textarea>
@@ -722,6 +830,13 @@ textarea{resize:vertical;min-height:80px;}
 
 <div id="toast"></div>
 
+<!-- Mobile Bottom Action Bar (Quest-Detail) -->
+<div id="mobile-bottom-bar" style="display:none;">
+  <button class="mba-btn btn-q" id="mba-copy" onclick="mbaCopy()">📋 Prompt</button>
+  <button class="mba-btn btn-v" id="mba-save" onclick="mbaSave()">💾 Speichern</button>
+  <button class="mba-btn mba-next" id="mba-next" onclick="goNextQuest()">⚡ Nächste</button>
+</div>
+
 <script>
 // ================================================================
 // STATE & STORAGE
@@ -742,8 +857,22 @@ var CFG_DEFAULTS = {
   von:'10.08.2026', bis:'02.04.2027'
 };
 
+var BAUSTEIN_KEYS = ['ansprechpartner','adressblock','motivationssatz','skillmatch','firmenbezug','notizen'];
+var BAUSTEIN_LABELS = {
+  ansprechpartner:'Ansprechpartner',adressblock:'Adressblock',
+  motivationssatz:'Motivationssatz',skillmatch:'Skill-Match',
+  firmenbezug:'Firmenbezug',notizen:'Sonstige Notizen'
+};
+var STEP_STATUSES = ['offen','begonnen','Rohentwurf','geprüft','erledigt'];
+
 function defaultQuest() {
-  return { done:{}, returns:{}, extracted:{}, contact:{ansprechpartner:'',anrede:'',email:'',adresse:''}, verdict:'' };
+  return {
+    done:{}, returns:{}, extracted:{},
+    contact:{ansprechpartner:'',anrede:'',email:'',adresse:''},
+    verdict:'',
+    stepStatus:{},
+    bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}
+  };
 }
 function defaultS() {
   return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{} };
@@ -760,9 +889,15 @@ var _rPrompt='', _cleanPrompt='', _track2Text='';
 // ----------------------------------------------------------------
 // SAVE / LOAD
 // ----------------------------------------------------------------
+function persistLocalOnly() {
+  // Write to localStorage without touching _lastExported or triggering auto-sync.
+  // Used after gistApplyData() to persist the gist-supplied timestamp unchanged.
+  try { localStorage.setItem(LS, JSON.stringify(S)); } catch(e) { toast('Speicherfehler: ' + e.message.slice(0,40)); }
+}
+
 function save() {
   S._lastExported = new Date().toISOString();
-  try { localStorage.setItem(LS, JSON.stringify(S)); } catch(e) { toast('Speicherfehler: ' + e.message.slice(0,40)); }
+  persistLocalOnly();
   gistAutoSyncDebounced();
 }
 
@@ -774,8 +909,12 @@ function load() {
       S = Object.assign(defaultS(), p);
       if (!S.regions || !S.regions.length) S.regions = [].concat(DEFAULT_REGIONS);
       if (!S.cfg) S.cfg = {};
-      // Ensure all firms have quest objects
-      S.firms.forEach(function(f) { if (!f.quest) f.quest = defaultQuest(); });
+      // Ensure all firms have quest objects with new fields
+      S.firms.forEach(function(f) {
+        if (!f.quest) f.quest = defaultQuest();
+        if (!f.quest.stepStatus) f.quest.stepStatus = {};
+        if (!f.quest.bausteine) f.quest.bausteine = {ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
+      });
     }
   } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
 }
@@ -792,10 +931,28 @@ function newFirm(name) {
     quest: defaultQuest()
   };
 }
+function normalizeFirmName(name) {
+  if(!name) return '';
+  return name
+    .trim()
+    .toLowerCase()
+    // collapse multiple spaces
+    .replace(/\s+/g,' ')
+    // strip common legal suffixes for comparison (kept in display name)
+    .replace(/\s*(gmbh\s*(&\s*co\.?\s*kg)?|ag|se|kg|ohg|gbr|ug\s*\(haftungsbeschränkt\)|e\.v\.|ggmbh|co\.\s*kg|gmbh\s*&\s*co\.\s*kg)\s*$/i,'')
+    // strip trailing punctuation
+    .replace(/[.,;|]+$/, '')
+    .trim();
+}
+
 function getFirm(id) { return S.firms.find(function(f){return String(f.id)===String(id);}); }
 function findByName(name) {
-  var n = name.trim().toLowerCase();
-  return S.firms.find(function(f){return f.name.trim().toLowerCase()===n;});
+  var norm=normalizeFirmName(name);
+  // 1. Exact match (trimmed, lowercased)
+  var exact=S.firms.find(function(f){return f.name.trim().toLowerCase()===name.trim().toLowerCase();});
+  if(exact) return exact;
+  // 2. Normalized match (strips legal suffixes)
+  return S.firms.find(function(f){return normalizeFirmName(f.name)===norm;});
 }
 
 // ----------------------------------------------------------------
@@ -1034,6 +1191,7 @@ function questPhases(f) {
 }
 
 function renderQuestOverview() {
+  renderNextQuestWidget();
   var wrap=document.getElementById('quest-overview');
   if(!wrap) return;
   var active=S.firms.filter(function(f){return f.status==='offen'||Object.values(f.quest.done||{}).some(Boolean);});
@@ -1052,9 +1210,11 @@ function renderQuestOverview() {
         return '<div class="pdot'+(phases[i]?' done':steps>(i*2)?' active':'')+'" title="Phase '+p+'">'+p+'</div>';
       }).join('') + '</div>' +
       '<div class="step-bar">' + [0,1,2,3,4,5,6,7].map(function(i){
-        return '<div class="sbar-cell'+(f.quest.done[i]?' done':'')+'"></div>';
+        var st=f.quest.stepStatus[i]||'offen';
+        var col=st==='erledigt'?'var(--green)':st==='geprüft'?'var(--teal)':st==='Rohentwurf'?'var(--blue)':st==='begonnen'?'var(--gold)':'';
+        return '<div class="sbar-cell'+(f.quest.done[i]?' done':'')+'"'+(col&&!f.quest.done[i]?' style="background:'+col+';opacity:.5"':'')+' title="'+esc(st)+'"></div>';
       }).join('') + '</div>' +
-      '<div style="font-size:11px;color:var(--ink-light);margin-top:5px;">'+steps+'/8 Schritte</div>' +
+      '<div style="font-size:11px;color:var(--ink-light);margin-top:5px;">'+steps+'/8 Schritte · ' + (function(){var ns=getNextStep(f);return ns?'➤ '+esc(STEPS[ns.idx].name):'Alle erledigt ✓';})() + '</div>' +
       '</div></div>';
   }).join('');
 }
@@ -1070,12 +1230,17 @@ function openQuestDetail(id) {
   document.getElementById('qd-title').textContent=f.name;
   document.getElementById('qd-obs').textContent='r.FIAE.PS.Bewerbungen.'+f.name.trim();
   document.getElementById('qd-folder').textContent='Bewerbung_'+f.name.trim().replace(/\s+/g,'_');
-  updateStatusStrip(f); renderQuestSteps(f); drawMap();
+  updateStatusStrip(f); renderQuestSteps(f); renderBausteine(f); updateMobileBar(f); drawMap();
+  // auto-open next open step
+  var ns=getNextStep(f);
+  if(ns) { setTimeout(function(){ if(!document.getElementById('sb-'+ns.idx+'').classList.contains('open')) toggleStep(ns.idx); },150); }
 }
 function closeQuestDetail() {
   document.getElementById('quest-overview-wrap').style.display='';
   document.getElementById('quest-detail').classList.remove('vis');
-  activeQuestFirmId=null; renderQuestOverview(); drawMap();
+  activeQuestFirmId=null;
+  var mbb=document.getElementById('mobile-bottom-bar'); if(mbb) mbb.style.display='none';
+  renderQuestOverview(); drawMap();
 }
 function updateStatusStrip(f) {
   var q=f.quest;
@@ -1168,7 +1333,305 @@ function refreshAllPrompts(f) {
   STEPS.forEach(function(_,i){var el=document.getElementById('sp-'+i);if(el)el.innerHTML=promptHTML(getPrompt(i,f));});
 }
 
-// Parse helpers
+// ================================================================
+// STEP STATUS & NEXT-QUEST
+// ================================================================
+function cycleStepStatus(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var cur=f.quest.stepStatus[si]||'offen';
+  var idx=STEP_STATUSES.indexOf(cur);
+  var next=STEP_STATUSES[(idx+1)%STEP_STATUSES.length];
+  f.quest.stepStatus[si]=next;
+  if(next==='erledigt') { f.quest.done[si]=true; var g=document.getElementById('sg-'+si);if(g){g.classList.add('cl');g.textContent='✓';} var card=document.getElementById('ss-'+si);if(card)card.classList.add('done'); }
+  else if(cur==='erledigt') { f.quest.done[si]=false; var g2=document.getElementById('sg-'+si);if(g2){g2.classList.remove('cl');g2.textContent=(si+1);} var card2=document.getElementById('ss-'+si);if(card2)card2.classList.remove('done'); }
+  var badge=document.querySelector('#ss-'+si+' .sstatus');
+  if(badge){var stCls={offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[next]||'ss-offen';badge.textContent=next;badge.className='sstatus '+stCls;}
+  updateProgress(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
+  toast('Status: '+next);
+}
+
+function copyPromptAndSetStatus(si, fid, btn) {
+  var f=getFirm(fid); if(!f) return;
+  copyText(getPrompt(si,f),btn);
+  // auto-set status to "begonnen" if still offen
+  if((f.quest.stepStatus[si]||'offen')==='offen') {
+    f.quest.stepStatus[si]='begonnen';
+    var badge=document.querySelector('#ss-'+si+' .sstatus');
+    if(badge){badge.textContent='begonnen';badge.className='sstatus ss-begonnen';}
+    save();
+  }
+}
+
+function getNextStep(f) {
+  // Priority order for incomplete steps:
+  // 1. "begonnen" — already started, needs result
+  // 2. "offen" — not yet touched
+  // 3. "Rohentwurf" — has draft, needs review
+  // 4. "geprüft" — reviewed but not marked done
+  // Never return steps that are done (erledigt + done===true)
+  var priority=['begonnen','offen','Rohentwurf','geprüft'];
+  for(var p=0;p<priority.length;p++){
+    for(var i=0;i<STEPS.length;i++){
+      if(f.quest.done[i]) continue;
+      var st=f.quest.stepStatus[i]||'offen';
+      if(st===priority[p]) return {idx:i,step:STEPS[i]};
+    }
+  }
+  // Fallback: first incomplete step regardless of status
+  for(var j=0;j<STEPS.length;j++){
+    if(!f.quest.done[j]) return {idx:j,step:STEPS[j]};
+  }
+  return null;
+}
+
+function renderNextQuestWidget() {
+  var wrap=document.getElementById('next-quest-widget'); if(!wrap) return;
+  // Find the firm with the most progress that still has open steps
+  var candidates=S.firms.filter(function(f){return f.status==='offen';});
+  if(!candidates.length){wrap.innerHTML='';return;}
+  // Sort: most steps done but not all done
+  candidates.sort(function(a,b){
+    var da=Object.values(a.quest.done||{}).filter(Boolean).length;
+    var db=Object.values(b.quest.done||{}).filter(Boolean).length;
+    if(da!==db) return db-da; // more done = higher priority
+    return 0;
+  });
+  var f=candidates[0];
+  var ns=getNextStep(f);
+  if(!ns){wrap.innerHTML='';return;}
+  var stepsTotal=Object.values(f.quest.done||{}).filter(Boolean).length;
+  wrap.innerHTML='<div class="nq-card" onclick="openQuestDetail(\''+f.id+'\')">'
+    +'<div class="nq-icon">⚡</div>'
+    +'<div class="nq-body">'
+    +'<div class="nq-firm">'+esc(f.name)+'<span style="font-size:11px;color:var(--ink-light);font-weight:400;margin-left:8px;">'+stepsTotal+'/8</span></div>'
+    +'<div class="nq-step">➤ Nächster Schritt: <strong>'+esc(ns.step.name)+'</strong></div>'
+    +'<div class="nq-hint">Tippe hier für den direkten Wiedereinstieg</div>'
+    +'</div>'
+    +'<div class="nq-arrow">›</div>'
+    +'</div>';
+}
+
+function goNextQuest() {
+  // Go to next open step of current firm, or find next firm
+  var f=getFirm(activeQuestFirmId);
+  if(f){var ns=getNextStep(f);if(ns){openSteps={};openSteps[ns.idx]=true;renderQuestSteps(f);toast('➤ '+STEPS[ns.idx].name);return;}}
+  // Find next active firm
+  var candidates=S.firms.filter(function(x){return x.status==='offen'&&String(x.id)!==String(activeQuestFirmId);});
+  if(candidates.length){openQuestDetail(candidates[0].id);}
+  else toast('Alle Quests bearbeitet!');
+}
+
+function updateMobileBar(f) {
+  var mbb=document.getElementById('mobile-bottom-bar'); if(!mbb) return;
+  var isMobile=window.innerWidth<=767;
+  var isDetail=document.getElementById('quest-detail')&&document.getElementById('quest-detail').classList.contains('vis');
+  // Only show on mobile AND when quest detail is open
+  mbb.style.display=(isMobile&&isDetail)?'flex':'none';
+  if(!isMobile||!isDetail||!f) return;
+  var ns=getNextStep(f);
+  var nextBtn=document.getElementById('mba-next');
+  if(nextBtn) nextBtn.textContent=ns?'⚡ '+STEPS[ns.idx].name.slice(0,12):'✓ Fertig';
+}
+
+function mbaCopy() {
+  // Copy prompt of currently open step, or next step
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  // find open step
+  var openIdx=null;
+  for(var k in openSteps){if(openSteps[k]){openIdx=parseInt(k);break;}}
+  if(openIdx===null){var ns=getNextStep(f);if(ns)openIdx=ns.idx;}
+  if(openIdx===null){toast('Kein Schritt offen');return;}
+  var btn=document.getElementById('copy-prompt-'+openIdx);
+  copyPromptAndSetStatus(openIdx,f.id,btn);
+}
+
+function mbaSave() {
+  // Save return of currently open step
+  for(var k in openSteps){
+    if(openSteps[k]){
+      var si=parseInt(k);
+      var ta=document.getElementById('sr-'+si);
+      if(ta&&ta.value.trim()) { saveReturn(si); return; }
+    }
+  }
+  toast('Kein Ergebnis-Feld offen oder leer');
+}
+
+// ================================================================
+// BAUSTEIN SPEICHER
+// ================================================================
+var bausteineOpen=false;
+
+function toggleBausteine(){
+  bausteineOpen=!bausteineOpen;
+  var body=document.getElementById('baustein-body');
+  var chev=document.getElementById('baustein-chev');
+  if(body) body.classList.toggle('open',bausteineOpen);
+  if(chev) chev.classList.toggle('open',bausteineOpen);
+}
+
+function renderBausteine(f) {
+  var grid=document.getElementById('baustein-grid'); if(!grid) return;
+  if(!f.quest.bausteine) f.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
+  var b=f.quest.bausteine;
+  var filled=BAUSTEIN_KEYS.filter(function(k){return b[k]&&b[k].trim();}).length;
+  var counter=document.getElementById('baustein-fill-count');
+  if(counter) counter.textContent=filled+'/'+BAUSTEIN_KEYS.length+' befüllt';
+
+  // Pre-fill from quest.contact if available
+  if(!b.ansprechpartner&&f.quest.contact.ansprechpartner) b.ansprechpartner=f.quest.contact.ansprechpartner;
+  if(!b.adressblock&&f.quest.contact.adresse) b.adressblock=f.quest.contact.adresse;
+
+  grid.innerHTML=BAUSTEIN_KEYS.map(function(k){
+    var val=b[k]||'';
+    var stCls=val.trim()?'bst-ok':'bst-leer';
+    var stLbl=val.trim()?'✓ befüllt':'leer';
+    return '<div class="baustein-item">'
+      +'<div style="display:flex;align-items:center;gap:7px;">'
+      +'<div class="baustein-label">'+esc(BAUSTEIN_LABELS[k])+'</div>'
+      +'<span class="baustein-status '+stCls+'">'+stLbl+'</span>'
+      +'</div>'
+      +'<textarea class="baustein-ta" id="bst-'+k+'" rows="2" placeholder="'+getBausteinPlaceholder(k)+'" oninput="saveBaustein(\''+f.id+'\',\''+k+'\')" >'+esc(val)+'</textarea>'
+      +'</div>';
+  }).join('');
+  // hide preview
+  var prev=document.getElementById('md-preview');if(prev)prev.style.display='none';
+  var cpBtn=document.getElementById('btn-copy-md');if(cpBtn)cpBtn.style.display='none';
+}
+
+function getBausteinPlaceholder(k){
+  var p={
+    ansprechpartner:'z. B. Frau Müller (HR)',
+    adressblock:'Firmenname\nStraße\nPLZ Ort',
+    motivationssatz:'Ein konkreter Satz, warum genau diese Firma …',
+    skillmatch:'- Java: 3 Monate Übungsprojekte\n- Git: täglich genutzt',
+    firmenbezug:'Was macht die Firma besonders attraktiv …',
+    notizen:'Sonstige Hinweise, Besonderheiten …'
+  };
+  return p[k]||'';
+}
+
+function saveBaustein(fid, key) {
+  var f=getFirm(fid); if(!f) return;
+  if(!f.quest.bausteine) f.quest.bausteine={};
+  var ta=document.getElementById('bst-'+key);
+  if(!ta) return;
+  f.quest.bausteine[key]=ta.value;
+  // update status indicator inline without full re-render
+  var item=ta.parentElement.parentElement;
+  var badge=item?item.querySelector('.baustein-status'):null;
+  if(badge){var hasVal=ta.value.trim();badge.textContent=hasVal?'✓ befüllt':'leer';badge.className='baustein-status '+(hasVal?'bst-ok':'bst-leer');}
+  var counter=document.getElementById('baustein-fill-count');
+  if(counter){var filled=BAUSTEIN_KEYS.filter(function(k){return f.quest.bausteine[k]&&f.quest.bausteine[k].trim();}).length;counter.textContent=filled+'/'+BAUSTEIN_KEYS.length+' befüllt';}
+  save();
+}
+
+var _mdText='';
+function genMarkdown(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var b=f.quest.bausteine||{};
+  var cfg=getCfg();
+  // Safe contact fallbacks
+  var contact=f.quest.contact||{};
+  var anrede=contact.anrede||'';
+  // Determine greeting: prefer baustein ansprechpartner or contact anrede
+  var greeting='Sehr geehrte Damen und Herren,';
+  if(anrede&&anrede.trim()&&anrede!=='Sehr geehrte Damen und Herren') {
+    greeting=anrede.trim()+',';
+  } else if(b.ansprechpartner&&b.ansprechpartner.trim()) {
+    // Can't derive formal greeting from first name only — keep fallback
+    greeting='Sehr geehrte Damen und Herren,';
+  }
+  // Adress block: prefer baustein, fall back to contact.adresse, then firm fields
+  var addrBlock=b.adressblock||(contact.adresse?contact.adresse.replace(/\\n/g,'\n'):'')
+    ||(f.adresse?f.adresse.replace(/\\n/g,'\n'):'— Adresse noch nicht erfasst');
+  // Ansprechpartner: prefer baustein, fall back to contact field
+  var apDisplay=b.ansprechpartner||(contact.ansprechpartner||'— noch nicht bekannt');
+
+  _mdText='# Bewerbung — '+f.name+'\n\n'
+    +'**Ansprechpartner:** '+apDisplay+'\n\n'
+    +'**Adresse:**\n'+addrBlock+'\n\n'
+    +'---\n\n'
+    +greeting+'\n\n'
+    +'Als Umschüler im Beruf zum '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung')+' mit IHK-Abschluss bei der '+(cfg.traeger||'IBB AG')+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+(cfg.von||'—')+' bis '+(cfg.bis||'—')+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte.\n\n'
+    +(b.motivationssatz&&b.motivationssatz.trim()?b.motivationssatz.trim()+'\n\n':'')
+    +(b.firmenbezug&&b.firmenbezug.trim()?b.firmenbezug.trim()+'\n\n':'')
+    +(b.skillmatch&&b.skillmatch.trim()?'**Meine relevanten Kenntnisse:**\n'+b.skillmatch.trim()+'\n\n':'')
+    +(b.notizen&&b.notizen.trim()?'**Hinweise:**\n'+b.notizen.trim()+'\n\n':'')
+    +'Mit freundlichen Grüßen\n'+(cfg.name||'—');
+  var prev=document.getElementById('md-preview');
+  if(prev){prev.textContent=_mdText;prev.style.display='block';}
+  var cpBtn=document.getElementById('btn-copy-md');if(cpBtn)cpBtn.style.display='inline-flex';
+}
+
+function copyMarkdown(btn){copyText(_mdText,btn);}
+
+// ================================================================
+// DIRECT RESEARCH INTAKE
+// ================================================================
+function runDirectIntake(){
+  var raw=document.getElementById('intake-raw').value.trim();
+  if(!raw){toast('Bitte Text einfügen.');return;}
+  var added=0,skipped=0,updated=0;
+  var lines=[];
+
+  // Try JSON parse first
+  var parsed=null;
+  try{
+    var cleaned=(raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/```\s*(\[[\s\S]*?\])\s*```/)||[null,raw])[1]||raw;
+    parsed=JSON.parse(cleaned.trim().replace(/^\uFEFF/,''));
+  }catch(e){parsed=null;}
+
+  if(Array.isArray(parsed)){
+    parsed.forEach(function(item){
+      if(!item.name){skipped++;return;}
+      var ex=findByName(item.name);
+      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();if(!ex.quest.bausteine)ex.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};updated++;lines.push({name:item.name,action:'aktualisiert'});}
+      else{var nf=Object.assign(newFirm(item.name),item,{quest:defaultQuest()});S.firms.push(nf);added++;lines.push({name:item.name,action:'neu'});}
+    });
+  } else {
+    // Plain text: extract firm names heuristically (lines starting with capital, containing GmbH/AG/etc.)
+    var textLines=raw.split(/\n/);
+    var firmPattern=/\b(GmbH|AG|SE|KG|OHG|e\.V\.|gGmbH|Co\.|GbR|UG)\b/i;
+    textLines.forEach(function(line){
+      line=line.trim();
+      if(!line||line.length<4) return;
+      if(firmPattern.test(line)||/^[\d\.\-]+\s+[A-ZÄÖÜ]/.test(line)){
+        var name=line.replace(/^\d+[\.\)]\s*/,'').replace(/^[-*•]\s*/,'').split(/\s{3,}/)[0].trim();
+        name=name.replace(/[,;].*$/,'').trim();
+        if(name.length<3||name.length>80) return;
+        var ex=findByName(name);
+        if(ex){skipped++;}else{S.firms.push(newFirm(name));added++;lines.push({name:name,action:'neu'});}
+      }
+    });
+  }
+
+  if(added+updated===0&&skipped===0){
+    toast('Keine Firmen erkannt. Nutze den Aufbereitungs-Prompt.');
+    return;
+  }
+  save();renderDB();drawMap();renderQuestOverview();
+
+  // Show summary
+  var res=document.getElementById('intake-result');
+  var sum=document.getElementById('intake-summary');
+  if(res&&sum){
+    res.classList.add('vis');
+    sum.innerHTML='<div class="intake-row"><div class="intake-k" style="color:var(--green);">Neu angelegt</div><div class="intake-v">'+added+' Firma(en)</div></div>'
+      +'<div class="intake-row"><div class="intake-k" style="color:var(--blue);">Aktualisiert</div><div class="intake-v">'+updated+' Firma(en)</div></div>'
+      +'<div class="intake-row"><div class="intake-k">Übersprungen</div><div class="intake-v">'+skipped+'</div></div>'
+      +(lines.length?'<div style="margin-top:8px;font-size:11px;color:var(--ink-light);">'+lines.map(function(l){return (l.action==='neu'?'✚ ':'↻ ')+esc(l.name);}).join('<br>')+'</div>':'');
+  }
+  toast('Intake: '+added+' neu, '+updated+' aktualisiert');
+}
+
+function genIntakePrompt(){
+  var raw=document.getElementById('intake-raw').value.trim();
+  var existing=S.firms.map(function(f){return f.name;}).join(', ')||'—';
+  var prompt='Strukturiere diese Firmenliste als JSON-Array für eine FIAE-Bewerbungs-App.\n\nEingabe:\n---\n'+(raw||'[HIER DEINE FIRMENLISTE EINFÜGEN]')+'\n---\n\nBereits vorhanden (nicht doppelt): '+existing+'\n\nNur dieses JSON-Array ausgeben, keine anderen Texte:\n```json\n[{"name":"Firma GmbH","region":"Bremen","kategorie":"a","status":"offen","adresse":"Firma GmbH\\nStraße\\nPLZ Ort","email":"","ansprechpartner":"","anrede":"Sehr geehrte Damen und Herren","eignungsurteil":"","stichpunkte":"","anschreibenSatz":"","notizen":"","bewerbungsDatum":""}]\n```';
+  copyText(prompt,null);
+  toast('Prompt kopiert — in ChatGPT/Claude einfügen');
+}
 function parseVerdict(raw) {
   if(/✅\s*geeignet/i.test(raw)) return '✅ GEEIGNET';
   if(/🟡\s*potenziell/i.test(raw)) return '🟡 POTENZIELL';
@@ -1200,6 +1663,10 @@ function saveReturn(si) {
   save(); renderExtracted(si,f);
   if(si===2||si===3) refreshAllPrompts(f);
   if(s.rt!=='contact') toast('Gespeichert! ✓');
+  // auto-advance step status to Rohentwurf when result saved
+  var cur=f.quest.stepStatus[si]||'offen';
+  if(cur==='offen'||cur==='begonnen') { f.quest.stepStatus[si]='Rohentwurf'; save(); }
+  updateMobileBar(f);
   renderQuestOverview(); drawMap();
 }
 
@@ -1241,10 +1708,16 @@ function toggleStep(si){
 function markDone(si,g) {
   var f=getFirm(activeQuestFirmId); if(!f) return;
   f.quest.done[si]=!f.quest.done[si];
+  if(f.quest.done[si]) f.quest.stepStatus[si]='erledigt';
+  else if(f.quest.stepStatus[si]==='erledigt') f.quest.stepStatus[si]='geprüft';
   g.classList.toggle('cl',!!f.quest.done[si]);
+  g.textContent=f.quest.done[si]?'✓':(si+1);
   var card=document.getElementById('ss-'+si);
   if(card) card.classList.toggle('done',!!f.quest.done[si]);
-  updateProgress(f); save(); renderQuestOverview(); drawMap();
+  // Update status badge text
+  var badge=card?card.querySelector('.sstatus'):null;
+  if(badge){var st=f.quest.stepStatus[si]||'offen';badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
+  updateProgress(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
 }
 
 function renderQuestSteps(f){
@@ -1252,6 +1725,8 @@ function renderQuestSteps(f){
   STEPS.forEach(function(s,i){
     if(s.phase&&s.phase!==lp){lp=s.phase;html+='<div class="phase-banner">'+s.pi+' '+esc(s.phase)+'</div>';}
     var done=!!f.quest.done[i];
+    var stStatus=f.quest.stepStatus[i]||'offen';
+    var stCls={offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[stStatus]||'ss-offen';
     var tc=s.tool==='perplexity'?'ts-p':'ts-g';
     var eu=s.tool==='perplexity'?'https://www.perplexity.ai':'https://chatgpt.com';
     var hint='';
@@ -1276,7 +1751,7 @@ function renderQuestSteps(f){
         +'<div class="rzl">↵ Ergebnis einfügen</div>'
         +'<textarea id="sr-'+i+'" rows="3" placeholder="'+esc(s.rh||'Antwort …')+'">'+esc(sr)+'</textarea>'
         +'<div class="arow" style="margin-top:6px;">'
-        +'<button class="btn btn-v btn-sm" onclick="saveReturn('+i+')">Speichern</button>'
+        +'<button class="btn btn-v btn-sm" onclick="saveReturn('+i+')">💾 Speichern</button>'
         +(sr?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Löschen</button>':'')
         +'</div>'
         +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte Daten</div>'+exIn+'</div>'
@@ -1284,16 +1759,17 @@ function renderQuestSteps(f){
     }
     html+='<div class="qstep'+(done?' done':'')+'" id="ss-'+i+'">'
       +'<div class="shead" onclick="toggleStep('+i+')">'
-      +'<div class="sgem'+(done?' cl':'')+'" id="sg-'+i+'" onclick="event.stopPropagation();markDone('+i+',this)">'+(done?'':(i+1))+'</div>'
+      +'<div class="sgem'+(done?' cl':'')+'" id="sg-'+i+'" onclick="event.stopPropagation();markDone('+i+',this)">'+(done?'✓':(i+1))+'</div>'
       +'<div class="sinfo"><div class="sname">'+esc(s.name)+'</div><div class="sdesc">'+esc(s.desc)+'</div></div>'
-      +'<span class="tscr '+tc+'">'+esc(s.tl)+'</span>'
+      +'<span class="sstatus '+stCls+'" onclick="event.stopPropagation();cycleStepStatus('+i+')" title="Status ändern">'+esc(stStatus)+'</span>'
+      +'<span class="tscr '+tc+'" style="margin-left:4px;">'+esc(s.tl)+'</span>'
       +'<span class="chev" id="sc-'+i+'">›</span>'
       +'</div>'
       +'<div class="sbody'+(openSteps[i]?' open':'')+'" id="sb-'+i+'">'
       +'<div class="snote">'+esc(s.note)+'</div>'+hint
       +'<div class="pscr" id="sp-'+i+'">'+promptHTML(getPrompt(i,f))+'</div>'
       +'<div class="arow">'
-      +'<button class="btn btn-q btn-sm" onclick="copyText(getPrompt('+i+',getFirm(\''+f.id+'\')),this)">Prompt kopieren</button>'
+      +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 Prompt kopieren</button>'
       +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
       +'</div>'+rz
       +'</div></div>';
@@ -1413,16 +1889,23 @@ function doImport(){
 // ================================================================
 function renderResearchChips(){
   var sent=S.firms.filter(function(f){return ['versendet','absage','zusage'].includes(f.status);});
+  var other=S.firms.filter(function(f){return !['versendet','absage','zusage'].includes(f.status);});
   var el=document.getElementById('sent-chips');
-  if(el)el.innerHTML=sent.length?sent.map(function(f){return '<span class="chip sent">'+esc(f.name)+'</span>';}).join(''):'<span class="chip">— keine versendeten</span>';
+  if(el){
+    var html='';
+    if(sent.length) html+=sent.map(function(f){return '<span class="chip sent" title="bereits beworben">'+esc(f.name)+'</span>';}).join('');
+    if(other.length) html+=other.map(function(f){return '<span class="chip" title="bereits bekannt">'+esc(f.name)+'</span>';}).join('');
+    el.innerHTML=html||'<span class="chip">— keine Einträge</span>';
+  }
 }
 function genRPrompt(){
   var region=document.getElementById('r-region').value;
   var focus=document.getElementById('r-focus').value;
   var size=document.getElementById('r-size').value;
-  var sent=S.firms.filter(function(f){return ['versendet','absage','zusage'].includes(f.status);});
-  var sentList=sent.length?sent.map(function(f){return '- '+f.name;}).join('\n'):'— keine';
-  _rPrompt='Du bist Recherche-Assistent für eine FIAE-Praktikumssuche.\n\nFinde IT-Unternehmen in der Region '+region+' die als Praktikumsbetrieb für eine Umschulung zum Fachinformatiker für Anwendungsentwicklung geeignet sind.\n\nAnforderungen:\n- Tätigkeitsfeld: Softwareentwicklung, '+focus+'\n- Unternehmensgröße: '+size+'\n- IHK-Ausbildungsbetrieb oder IT-Ausbildungsnachweis\n- Realer Präsenzstandort\n\nBereits angeschrieben — NICHT nennen:\n'+sentList+'\n\nPro Firma: Name + Adresse + Region · Warum geeignet (1–2 Sätze) · Tech-Stack · Kategorie A/B · Quelle(n)\nMindestens 10 Firmen. Nur Websuche.';
+  // Blacklist = ALL known firms, not just sent ones
+  var allKnown=S.firms;
+  var blacklist=allKnown.length?allKnown.map(function(f){return '- '+f.name;}).join('\n'):'— keine';
+  _rPrompt='Du bist Recherche-Assistent für eine FIAE-Praktikumssuche.\n\nFinde IT-Unternehmen in der Region '+region+' die als Praktikumsbetrieb für eine Umschulung zum Fachinformatiker für Anwendungsentwicklung geeignet sind.\n\nAnforderungen:\n- Tätigkeitsfeld: Softwareentwicklung, '+focus+'\n- Unternehmensgröße: '+size+'\n- IHK-Ausbildungsbetrieb oder IT-Ausbildungsnachweis\n- Realer Präsenzstandort\n\nBereits bekannt — NICHT nennen:\n'+blacklist+'\n\nPro Firma: Name + Adresse + Region · Warum geeignet (1–2 Sätze) · Tech-Stack · Kategorie A/B · Quelle(n)\nMindestens 10 Firmen. Nur Websuche.';
   document.getElementById('r-pb').textContent=_rPrompt;
   document.getElementById('r-pw').style.display='block';
 }
@@ -1547,8 +2030,8 @@ function setSyncStatus(msg,ok,busy){
   msgEl.textContent=msg;
 }
 
-function gistBuildPayload(){
-  return {version:6,exported:new Date().toISOString(),cfg:S.cfg||{},regions:S.regions,firms:S.firms};
+function gistBuildPayload(syncTs){
+  return {version:6,exported:syncTs,cfg:S.cfg||{},regions:S.regions,firms:S.firms};
 }
 
 function gistAutoSyncDebounced(){
@@ -1578,14 +2061,27 @@ function gistPush(silent){
 
 function gistDoPush(silent){
   var token=gistGetToken(),id=gistGetId();
+  var prevTs=S._lastExported||'';
+  // One shared timestamp for both payload and local state
+  var syncTs=new Date().toISOString();
+  S._lastExported=syncTs;
   setSyncStatus('Hochladen …',true,true);
   fetch('https://api.github.com/gists/'+id,{
     method:'PATCH',
     headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(gistBuildPayload(),null,2)}}})
+    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(gistBuildPayload(syncTs),null,2)}}})
   })
-  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);setSyncStatus('Synchronisiert ✓',true,false);if(!silent)toast('☁ Hochgeladen!');})
-  .catch(function(e){setSyncStatus('Fehler',false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
+  .then(function(r){
+    if(!r.ok){S._lastExported=prevTs;throw new Error('HTTP '+r.status);}
+    persistLocalOnly(); // persist with the syncTs we just set
+    setSyncStatus('Synchronisiert ✓',true,false);
+    if(!silent)toast('☁ Hochgeladen!');
+  })
+  .catch(function(e){
+    S._lastExported=prevTs; // revert on failure
+    setSyncStatus('Fehler',false,false);
+    if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));
+  });
 }
 
 function gistPull(silent){
@@ -1632,11 +2128,18 @@ function gistMerge(){
 }
 
 function gistApplyData(data){
-  if(data.firms) S.firms=data.firms.map(function(f){f.quest=f.quest||defaultQuest();return f;});
+  if(data.firms) S.firms=data.firms.map(function(f){
+    f.quest=f.quest||defaultQuest();
+    if(!f.quest.stepStatus) f.quest.stepStatus={};
+    if(!f.quest.bausteine) f.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
+    return f;
+  });
   if(data.regions&&data.regions.length) S.regions=data.regions;
   if(data.cfg) S.cfg=data.cfg;
-  S._lastExported=data.exported||new Date().toISOString();
-  save(); renderDB(); drawMap(); renderQuestOverview();
+  // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it
+  S._lastExported=data.exported||S._lastExported||new Date().toISOString();
+  persistLocalOnly();
+  renderDB(); drawMap(); renderQuestOverview();
   if(currentTab==='settings') updateInfoPanel();
 }
 
@@ -1698,6 +2201,10 @@ renderQuestOverview();
 setTimeout(function(){ drawMap(); gistStartupSync(); }, 400);
 window.addEventListener('resize', function(){
   if(currentTab==='map') drawMap();
+  // Re-evaluate mobile bar on orientation/resize
+  var f=getFirm(activeQuestFirmId);
+  if(f) updateMobileBar(f);
+  else { var mbb=document.getElementById('mobile-bottom-bar');if(mbb)mbb.style.display='none'; }
 });
 </script>
 
