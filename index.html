@@ -897,6 +897,7 @@ function defaultQuest() {
     done:{}, returns:{}, extracted:{},
     rawReturns:{}, normalizedReturns:{},
     contact:{ansprechpartner:'',anrede:'',email:'',adresse:''},
+    checkResult:null,
     verdict:'',
     stepStatus:{},
     bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}
@@ -910,6 +911,7 @@ function ensureQuestDefaults(q) {
   q.rawReturns = q.rawReturns && typeof q.rawReturns==='object' ? q.rawReturns : {};
   q.normalizedReturns = q.normalizedReturns && typeof q.normalizedReturns==='object' ? q.normalizedReturns : {};
   q.contact = Object.assign({ansprechpartner:'',anrede:'',email:'',adresse:''}, (q.contact && typeof q.contact==='object') ? q.contact : {});
+  q.checkResult = q.checkResult && typeof q.checkResult==='object' ? q.checkResult : null;
   q.verdict = typeof q.verdict==='string' ? q.verdict : '';
   q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
   q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
@@ -1351,6 +1353,8 @@ var STEPS=[
    name:'Anschreiben prüfen',desc:'IBB/FIAE-konform + Faktencheck',
    note:'Anschreiben aus Schritt 4 eingebaut. Prüfergebnis zurückeinfügen.',
    rt:'text',rh:'Prüfergebnis einfügen …',
+   structural:true,
+   cleanPrompt:function(raw,c){return 'Analysiere dieses Prüfergebnis für '+(c||'[FIRMA]')+' und gib NUR ein strikt parsebares JSON zurück.\nKeine Vorrede, kein Markdown, kein Codeblock, nur JSON.\n\nZielschema:\n{\n  "pflichtpruefung": {\n    "umschulung": true,\n    "ausbildungsberuf": true,\n    "zeitraum": true,\n    "pflichtpraktikum": true,\n    "unternehmen_standort": true\n  },\n  "faktencheck": {\n    "firma_existiert": true,\n    "adresse_geprueft": true,\n    "taetigkeitsfeld_passend": true\n  },\n  "urteil": "✅ BEREIT | ⚠️ KORREKTURBEDARF | ❌ NICHT VERWENDBAR",\n  "korrekturen": ["..."],\n  "quellen": ["https://..."],\n  "kurzbegruendung": "..."\n}\n\nRohergebnis:\n---\n'+(raw||'[PRUEFERGEBNIS EINFÜGEN]')+'\n---\n\nWichtig: Gib ausschließlich gültiges JSON im exakt passenden Schema aus.';},
    prompt:function(c,ext){var as=(ext&&ext[3])?ext[3]:'[ANSCHREIBEN AUS SCHRITT 4]';return 'Prüf-Assistent FIAE. Keine Umformulierungen. Unternehmensangaben per Websuche.\nAnschreiben:\n'+as+'\nUnternehmen: '+(c||'[FIRMA]')+'\n1. Pflichtprüfung: ✅/❌ Umschulung · Ausbildungsberuf · Zeitraum · Pflichtpraktikum · Unternehmen+Standort\n2. Faktencheck (Websuche): Existenz, Adresse, Tätigkeitsfeld\n3. Urteil: ✅ Bereit zum Versand / ⚠️ Korrekturbedarf';}},
   {phase:'Phase III — Finalisierung',pi:'📜',num:6,tool:'gpt',tl:'ChatGPT',
    name:'PDF-Dateiname',desc:'Schema ohne Umlaute',
@@ -1721,6 +1725,52 @@ function extractJSON(raw){
   }
   return null;
 }
+function boolMark(v){return v===true?'✅':(v===false?'❌':'—');}
+function joinList(items, emptyText){
+  if(!Array.isArray(items)||!items.length) return emptyText||'—';
+  return items.filter(function(x){return !!x;}).join(' | ')||emptyText||'—';
+}
+function checkResultSummary(cr){
+  if(!cr||typeof cr!=='object') return '';
+  var pp=cr.pflichtpruefung||{};
+  var fc=cr.faktencheck||{};
+  var ptxt='Umschulung '+boolMark(pp.umschulung)+', Ausbildungsberuf '+boolMark(pp.ausbildungsberuf)+', Zeitraum '+boolMark(pp.zeitraum)+', Pflichtpraktikum '+boolMark(pp.pflichtpraktikum)+', Unternehmen+Standort '+boolMark(pp.unternehmen_standort);
+  var ftxt='Existenz '+boolMark(fc.firma_existiert)+', Adresse '+boolMark(fc.adresse_geprueft)+', Tätigkeitsfeld '+boolMark(fc.taetigkeitsfeld_passend);
+  return 'Urteil: '+(cr.urteil||'—')
+    +'\nPflichtprüfung: '+ptxt
+    +'\nFaktencheck: '+ftxt
+    +'\nKorrekturen: '+joinList(cr.korrekturen,'keine')
+    +'\nQuellen: '+joinList(cr.quellen,'keine');
+}
+function checkResultHTML(cr){
+  if(!cr||typeof cr!=='object') return '';
+  var pp=cr.pflichtpruefung||{}, fc=cr.faktencheck||{};
+  var korr=Array.isArray(cr.korrekturen)?cr.korrekturen.filter(function(x){return !!x;}):[];
+  var quellen=Array.isArray(cr.quellen)?cr.quellen.filter(function(x){return !!x;}):[];
+  function mkRows(rows){
+    return rows.map(function(r){
+      return '<div class="pf-row"><div class="pf-k">'+esc(r[0])+'</div><div class="pf-v">'+esc(r[1])+'</div></div>';
+    }).join('');
+  }
+  return '<div class="pf-rows">'
+    +'<div class="pf-row"><div class="pf-k"><strong>Urteil</strong></div><div class="pf-v"><strong>'+esc(cr.urteil||'—')+'</strong></div></div>'
+    +mkRows([
+      ['Pflichtprüfung',''],
+      ['• Umschulung',boolMark(pp.umschulung)],
+      ['• Ausbildungsberuf',boolMark(pp.ausbildungsberuf)],
+      ['• Zeitraum',boolMark(pp.zeitraum)],
+      ['• Pflichtpraktikum',boolMark(pp.pflichtpraktikum)],
+      ['• Unternehmen + Standort',boolMark(pp.unternehmen_standort)],
+      ['Faktencheck',''],
+      ['• Firma existiert',boolMark(fc.firma_existiert)],
+      ['• Adresse geprüft',boolMark(fc.adresse_geprueft)],
+      ['• Tätigkeitsfeld passend',boolMark(fc.taetigkeitsfeld_passend)],
+      ['Kurzbegründung',cr.kurzbegruendung||'—']
+    ])
+    +'<div class="pf-row"><div class="pf-k">Korrekturen</div><div class="pf-v">'+(korr.length?'<ul style="margin:0;padding-left:16px;">'+korr.map(function(k){return '<li>'+esc(k)+'</li>';}).join('')+'</ul>':'—')+'</div></div>'
+    +'<div class="pf-row"><div class="pf-k">Quellen</div><div class="pf-v">'+(quellen.length?'<ul style="margin:0;padding-left:16px;">'+quellen.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ul>':'—')+'</div></div>'
+    +'</div>';
+}
 
 // ----------------------------------------------------------------
 // CLEAN-PROMPT GENERATION
@@ -1831,19 +1881,39 @@ function saveNormalized(si) {
   }
   else if(s.rt==='text'){
     var jo3=extractJSON(raw);
-    if(jo3&&jo3.stichpunkte_roh){
-      f.quest.extracted[si]=jo3.stichpunkte_roh;
-      if(jo3.besonderheit) f.quest.extracted[si+'_bsd']=jo3.besonderheit;
-      if(jo3.kernkompetenzen) f.quest.extracted[si+'_kk']=jo3.kernkompetenzen.join(', ');
-      // auto-fill skillmatch baustein
-      if(!f.quest.bausteine.skillmatch&&jo3.kernkompetenzen) f.quest.bausteine.skillmatch=jo3.kernkompetenzen.map(function(k){return '- '+k;}).join('\n');
-      if(!f.quest.bausteine.firmenbezug&&jo3.besonderheit) f.quest.bausteine.firmenbezug=jo3.besonderheit;
-      parsed=true;
-      f.quest.stepStatus[si]='geprüft';
-      toast('Stichpunkte strukturiert gespeichert ✓');
+    if(si===4){
+      if(jo3&&jo3.pflichtpruefung&&jo3.faktencheck&&jo3.urteil){
+        f.quest.checkResult={
+          pflichtpruefung:jo3.pflichtpruefung,
+          faktencheck:jo3.faktencheck,
+          urteil:jo3.urteil,
+          korrekturen:Array.isArray(jo3.korrekturen)?jo3.korrekturen:[],
+          quellen:Array.isArray(jo3.quellen)?jo3.quellen:[],
+          kurzbegruendung:jo3.kurzbegruendung||''
+        };
+        f.quest.extracted[si]=checkResultSummary(f.quest.checkResult);
+        parsed=true;
+        f.quest.stepStatus[si]='geprüft';
+        toast('Prüfauswertung strukturiert gespeichert ✓');
+      } else {
+        f.quest.extracted[si]=extractCode(raw);
+        toast('JSON nicht erkannt — als Text gespeichert.');
+      }
     } else {
-      f.quest.extracted[si]=extractCode(raw);
-      toast('Als Text gespeichert ✓');
+      if(jo3&&jo3.stichpunkte_roh){
+        f.quest.extracted[si]=jo3.stichpunkte_roh;
+        if(jo3.besonderheit) f.quest.extracted[si+'_bsd']=jo3.besonderheit;
+        if(jo3.kernkompetenzen) f.quest.extracted[si+'_kk']=jo3.kernkompetenzen.join(', ');
+        // auto-fill skillmatch baustein
+        if(!f.quest.bausteine.skillmatch&&jo3.kernkompetenzen) f.quest.bausteine.skillmatch=jo3.kernkompetenzen.map(function(k){return '- '+k;}).join('\n');
+        if(!f.quest.bausteine.firmenbezug&&jo3.besonderheit) f.quest.bausteine.firmenbezug=jo3.besonderheit;
+        parsed=true;
+        f.quest.stepStatus[si]='geprüft';
+        toast('Stichpunkte strukturiert gespeichert ✓');
+      } else {
+        f.quest.extracted[si]=extractCode(raw);
+        toast('Als Text gespeichert ✓');
+      }
     }
     refreshAllPrompts(f);
   }
@@ -1901,6 +1971,9 @@ function renderExtracted(si,f) {
       +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(c.email||'—')+'</div></div>'
       +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((c.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
       +'</div>';
+  } else if(si===4&&f.quest.checkResult){
+    blk.classList.add('vis');
+    blk.querySelector('.exc').innerHTML=checkResultHTML(f.quest.checkResult);
   } else {
     var val=f.quest.extracted[si];blk.classList.toggle('vis',!!val);
     if(val) blk.querySelector('.exc').textContent=val;
@@ -1914,6 +1987,7 @@ function clearReturn(si) {
   delete f.quest.rawReturns[si]; delete f.quest.normalizedReturns[si];
   if(s.rt==='verdict') f.quest.verdict='';
   if(s.rt==='contact') f.quest.contact={ansprechpartner:'',anrede:'',email:'',adresse:''};
+  if(si===4) f.quest.checkResult=null;
   if((f.quest.stepStatus[si]||'erledigt')!=='offen') f.quest.stepStatus[si]='offen';
   save(); updateStatusStrip(f); refreshAllPrompts(f);
   openSteps={}; renderQuestSteps(f); toast('Gelöscht.');
@@ -1958,7 +2032,9 @@ function renderQuestSteps(f){
     if(s.rt){
       var hasRaw=!!(f.quest.rawReturns[i]||f.quest.returns[i]);
       var hasNorm=!!f.quest.normalizedReturns[i];
-      var hasEx=s.rt==='contact'?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.adresse):f.quest.extracted[i];
+      var hasEx=s.rt==='contact'
+        ?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.adresse)
+        :(i===4?(!!f.quest.checkResult||!!f.quest.extracted[i]):f.quest.extracted[i]);
       var exIn='';
       if(s.rt==='contact'&&(f.quest.contact.ansprechpartner||f.quest.contact.anrede)){
         var ct=f.quest.contact;
@@ -1968,6 +2044,8 @@ function renderQuestSteps(f){
           +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(ct.email||'—')+'</div></div>'
           +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((ct.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
           +'</div>';
+      } else if(i===4&&f.quest.checkResult){
+        exIn='<div class="exc">'+checkResultHTML(f.quest.checkResult)+'</div>';
       } else if(f.quest.extracted[i]){ exIn='<div class="exc">'+esc(f.quest.extracted[i])+'</div>'; }
 
       if(s.structural){
