@@ -473,6 +473,33 @@ textarea{resize:vertical;min-height:80px;}
 .intake-k{font-weight:700;width:90px;flex-shrink:0;color:var(--ink-light);}
 .intake-v{color:var(--ink);}
 
+/* === STRUCTURAL STEP TWO-STAGE UI === */
+.rzone-structural{margin-top:12px;}
+.rz-stage{
+  background:rgba(0,0,0,.18);border:1px solid var(--border);border-radius:7px;
+  padding:10px 12px;margin-bottom:8px;
+}
+.rz-stage-head{
+  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+  display:flex;align-items:center;gap:6px;margin-bottom:7px;
+}
+.rz-s1 .rz-stage-head{color:var(--ink-light);}
+.rz-s2 .rz-stage-head{color:var(--teal);}
+.rz-s3 .rz-stage-head{color:var(--green);}
+.rz-stage-badge{
+  font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;
+}
+.rz-badge-raw{background:rgba(85,85,119,.2);color:var(--ink-dim);border:1px solid var(--border);}
+.rz-badge-clean{background:rgba(26,188,156,.12);color:var(--teal);border:1px solid var(--teal);}
+.rz-badge-ok{background:rgba(46,204,113,.12);color:var(--green);border:1px solid var(--green-dark);}
+.rz-hint{font-size:11px;color:var(--ink-light);font-style:italic;margin-bottom:6px;line-height:1.5;}
+.clean-prompt-box{
+  font-size:11px;background:rgba(0,0,0,.25);border:1px solid var(--border);
+  border-radius:5px;padding:8px 10px;white-space:pre-wrap;font-family:monospace;
+  max-height:140px;overflow-y:auto;color:var(--ink-light);margin-bottom:7px;display:none;
+}
+.clean-prompt-box.vis{display:block;}
+
 /* === GIST SYNC === */
 .sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .sync-status{
@@ -868,6 +895,7 @@ var STEP_STATUSES = ['offen','begonnen','Rohentwurf','geprüft','erledigt'];
 function defaultQuest() {
   return {
     done:{}, returns:{}, extracted:{},
+    rawReturns:{}, normalizedReturns:{},
     contact:{ansprechpartner:'',anrede:'',email:'',adresse:''},
     verdict:'',
     stepStatus:{},
@@ -914,6 +942,12 @@ function load() {
         if (!f.quest) f.quest = defaultQuest();
         if (!f.quest.stepStatus) f.quest.stepStatus = {};
         if (!f.quest.bausteine) f.quest.bausteine = {ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
+        if (!f.quest.rawReturns) f.quest.rawReturns = {};
+        if (!f.quest.normalizedReturns) f.quest.normalizedReturns = {};
+        // Migrate: copy existing returns to rawReturns where not already set
+        Object.keys(f.quest.returns||{}).forEach(function(k){
+          if(f.quest.returns[k]&&!f.quest.rawReturns[k]) f.quest.rawReturns[k]=f.quest.returns[k];
+        });
       });
     }
   } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
@@ -1281,21 +1315,29 @@ var STEPS=[
    name:'Eignungsprüfung',desc:'5 Kriterien (A–E) · öffentliche Quellen',
    note:'Ergebnis einfügen. App erkennt Urteil automatisch.',
    rt:'verdict',rh:'Perplexity-Antwort einfügen …',
+   structural:true,
+   cleanPrompt:function(raw,c){return 'Extrahiere aus dieser Eignungsprüfung für '+(c||'[FIRMA]')+' exakt diesen JSON-Block und nichts anderes:\n\n```json\n{\n  "urteil": "✅ GEEIGNET | 🟡 POTENZIELL | ⚠️ UNKLAR | ❌ UNGEEIGNET",\n  "stichpunkte": ["Stichpunkt 1","Stichpunkt 2","Stichpunkt 3","Stichpunkt 4"],\n  "begruendung": "1–2 Sätze"\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben.';},
    prompt:function(c){var cfg=getCfg();return 'Prüfe ob '+( c||'[FIRMA]')+' für ein FIAE-Pflichtpraktikum (Umschulung '+cfg.traeger+') geeignet ist. Nur Websuche.\n\n## HARTE KRITERIEN (MUSS)\nA – IT/Software-Tätigkeitsfeld\nB – IHK-Ausbildungsbetrieb ODER IT-Ausbildung ODER Umschüler\nC – Programmiersprachen, Frameworks, Projektarbeit\n## WEICHE KRITERIEN\nD – Präsenzstandort, Teamstruktur\nE – Größe, Mentoring\n\nTabelle: Kriterium | Bewertung | Begründung | Quelle\nGesamtbewertung: ✅ geeignet / 🟡 potenziell / ⚠️ unklar / ❌ ungeeignet + max. 4 Stichpunkte';}},
   {phase:null,num:2,tool:'perplexity',tl:'Perplexity',
    name:'Kontaktdaten',desc:'Adresse · Ansprechpartner · E-Mail',
    note:'App liest JSON automatisch — Anrede fließt in Schritt 7.',
    rt:'contact',rh:'Perplexity-Antwort einfügen (App findet JSON automatisch) …',
+   structural:true,
+   cleanPrompt:function(raw,c){return 'Extrahiere aus diesem Text die Kontaktdaten für '+(c||'[FIRMA]')+' und gib NUR diesen JSON-Block aus:\n\n```json\n{\n  "ansprechpartner": "Vorname Nachname (Funktion) — oder leer lassen",\n  "anrede": "Sehr geehrte Frau/Herr [Name] — oder: Sehr geehrte Damen und Herren",\n  "email": "adresse@firma.de — oder leer",\n  "adresse": "Firmenname\\nStraße Nr\\nPLZ Ort"\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben, keine Erklärungen.';},
    prompt:function(c){return 'Recherchiere Kontaktdaten für Praktikumsbewerbung (FIAE-Umschulung) bei '+(c||'[FIRMA]')+'. Nur Websuche.\n\nGib am Ende ZWINGEND diesen JSON-Block aus:\n```json\n{\n  "ansprechpartner": "Vorname Nachname (Funktion) — oder leer",\n  "anrede": "Sehr geehrte Frau/Herr [Name] — oder: Sehr geehrte Damen und Herren",\n  "email": "adresse@firma.de",\n  "adresse": "Firmenname\\nStraße Nr\\nPLZ Ort"\n}\n```';}},
   {phase:null,num:3,tool:'perplexity',tl:'Perplexity',
    name:'Firmenprofil-Stichpunkte',desc:'Fakten für den firmenspezifischen Satz',
    note:'Stichpunkte fließen automatisch in Schritt 4.',
    rt:'text',rh:'Perplexity-Ergebnis einfügen …',
+   structural:true,
+   cleanPrompt:function(raw,c){return 'Extrahiere aus diesem Firmenprofil für '+(c||'[FIRMA]')+' komprimierte Stichpunkte für ein FIAE-Anschreiben.\nGib NUR diesen JSON-Block aus:\n\n```json\n{\n  "kernkompetenzen": ["Tech/Fähigkeit 1","Tech/Fähigkeit 2","Tech/Fähigkeit 3"],\n  "ausbildung": "Infos zu Ausbildung/Praktikum/Umschüler — oder leer",\n  "besonderheit": "1 Satz: Was macht diese Firma für das Anschreiben attraktiv",\n  "stichpunkte_roh": "Komprimierte Stichpunkte für Prompt-Nutzung in 3–5 Sätzen"\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben.';},
    prompt:function(c){return 'Codeblock mit Unternehmensstichpunkten für '+(c||'[FIRMA]')+' (FIAE-Anschreiben). Nur Websuche.\nGruppiert nach: Geschichte · Unternehmensprofil · Kernkompetenzen · IT-Fokus · Kultur & Ausbildung · Arbeitsmodell';}},
   {phase:'Phase II — Schmiedekunst',pi:'⚒',num:4,tool:'gpt',tl:'ChatGPT',
    name:'Anschreiben generieren',desc:'Pflichtsatz + firmenspezifischer Satz',
    note:'Stichpunkte aus Schritt 3 eingebaut. Fertiges Anschreiben zurückeinfügen.',
    rt:'anschreiben',rh:'Fertiges Anschreiben einfügen …',
+   structural:true,
+   cleanPrompt:function(raw,c){return 'Prüfe und normalisiere dieses Anschreiben für '+(c||'[FIRMA]')+'. Gib NUR diesen JSON-Block aus:\n\n```json\n{\n  "anschreiben_text": "Das vollständige, bereinigte Anschreiben als einzelner String (\\n für Zeilenumbrüche)",\n  "pflichtsatz_ok": true,\n  "firmenspezifischer_satz": "Der erkannte firmenspezifische Satz"\n}\n```\n\nRohentwurf:\n---\n'+(raw||'[ANSCHREIBEN EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben.';},
    prompt:function(c,ext){var cfg=getCfg();var sp=(ext&&ext[2])?ext[2]:'[STICHPUNKTE AUS SCHRITT 3]';return 'Sachliches Anschreiben, Pflichtpraktikum '+cfg.beruf+' bei '+(c||'[FIRMA]')+'.\nZeitraum: '+cfg.von+'–'+cfg.bis+' · '+cfg.traeger+' · unentgeltlich\n\nPflichtsatz WORTGLEICH:\n„Als Umschüler im Beruf zum '+cfg.beruf+' mit IHK-Abschluss bei der '+cfg.traeger+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+cfg.von+' bis '+cfg.bis+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte."\n\nGENAU EINEN firmenspezifischen Satz. Stichpunkte:\n'+sp+'\n\nPraktikumsinhalte: Softwareentwicklung, OOP, Datenbanken, Projektarbeit. Max. eine Seite.';}},
   {phase:null,num:5,tool:'gpt',tl:'ChatGPT',
    name:'Anschreiben prüfen',desc:'IBB/FIAE-konform + Faktencheck',
@@ -1645,29 +1687,170 @@ function parseContact(raw) {
   try{var o=JSON.parse(m[1].trim());return typeof o.anrede==='string'?o:null;}catch(e){return null;}
 }
 function extractCode(raw){var m=raw.match(/```[\w]*\n?([\s\S]*?)```/);return m?m[1].trim():raw.trim();}
+function extractJSON(raw){
+  var m=raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/```\s*({[\s\S]*?})\s*```/);
+  if(!m) return null;
+  try{return JSON.parse(m[1].trim());}catch(e){return null;}
+}
+
+// ----------------------------------------------------------------
+// CLEAN-PROMPT GENERATION
+// ----------------------------------------------------------------
+function getCleanPrompt(si, f) {
+  var s=STEPS[si]; if(!s||!s.cleanPrompt) return '';
+  var raw=f.quest.rawReturns[si]||f.quest.returns[si]||'';
+  try{return s.cleanPrompt(raw, f.name);}catch(e){return '[Fehler: '+e.message+']';}
+}
+
+function genCleanPromptForStep(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var prompt=getCleanPrompt(si,f);
+  if(!prompt){toast('Kein Bereinigungs-Prompt für diesen Schritt.');return;}
+  // unhide stage 2 wrapper
+  var wrap=document.getElementById('cpb-wrap-'+si);
+  if(wrap) wrap.style.display='';
+  var box=document.getElementById('cpb-'+si);
+  if(box){box.textContent=prompt;box.classList.add('vis');}
+  // auto-advance status
+  var cur=f.quest.stepStatus[si]||'offen';
+  if(cur==='offen'||cur==='begonnen'){
+    f.quest.stepStatus[si]='Rohentwurf';
+    var badge=document.querySelector('#ss-'+si+' .sstatus');
+    if(badge){badge.textContent='Rohentwurf';badge.className='sstatus ss-rohentwurf';}
+    save();
+  }
+  copyText(prompt, null);
+  toast('Bereinigungs-Prompt kopiert ✓');
+}
+
+// ----------------------------------------------------------------
+// RAW SAVE (Stage 1)
+// ----------------------------------------------------------------
+function saveRaw(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var ta=document.getElementById('sr-raw-'+si); if(!ta) return;
+  var raw=ta.value.trim(); if(!raw){toast('Nichts eingefügt!');return;}
+  f.quest.rawReturns[si]=raw;
+  f.quest.returns[si]=raw; // keep legacy field in sync
+  // auto-status: at least "begonnen"
+  if((f.quest.stepStatus[si]||'offen')==='offen') f.quest.stepStatus[si]='begonnen';
+  var badge=document.querySelector('#ss-'+si+' .sstatus');
+  if(badge){var st=f.quest.stepStatus[si];badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
+  save(); toast('Rohergebnis gespeichert ✓');
+  // show the clean prompt box with fresh raw
+  var box=document.getElementById('cpb-'+si);
+  if(box&&box.classList.contains('vis')){box.textContent=getCleanPrompt(si,f);}
+  updateMobileBar(f);
+}
+
+// ----------------------------------------------------------------
+// NORMALIZED SAVE (Stage 2) + legacy saveReturn for non-structural
+// ----------------------------------------------------------------
+function saveNormalized(si) {
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var ta=document.getElementById('sr-norm-'+si); if(!ta) return;
+  var raw=ta.value.trim(); if(!raw){toast('Nichts eingefügt!');return;}
+  f.quest.normalizedReturns[si]=raw;
+  var s=STEPS[si];
+  var parsed=false;
+
+  if(s.rt==='verdict'){
+    // Try JSON parse first
+    var jo=extractJSON(raw);
+    if(jo&&jo.urteil){
+      f.quest.verdict=jo.urteil;
+      f.quest.extracted[si]=jo.urteil;
+      // also pull stichpunkte into extracted text
+      if(jo.stichpunkte&&Array.isArray(jo.stichpunkte)) f.quest.extracted[si+'_sp']=jo.stichpunkte.join('\n');
+      parsed=true;
+    } else {
+      // fallback: raw verdict parse
+      f.quest.verdict=parseVerdict(raw);
+      f.quest.extracted[si]=f.quest.verdict;
+    }
+    updateStatusStrip(f);
+    f.quest.stepStatus[si]='geprüft';
+    toast('Eignungsurteil erkannt: '+f.quest.verdict+' ✓');
+  }
+  else if(s.rt==='contact'){
+    var jo2=extractJSON(raw)||parseContact(raw);
+    if(jo2&&typeof jo2.anrede==='string'){
+      f.quest.contact={
+        ansprechpartner:jo2.ansprechpartner||'',
+        anrede:jo2.anrede||'Sehr geehrte Damen und Herren',
+        email:jo2.email||'',
+        adresse:(jo2.adresse||'').replace(/\\n/g,'\n')
+      };
+      // auto-fill bausteine
+      if(!f.quest.bausteine.ansprechpartner&&f.quest.contact.ansprechpartner) f.quest.bausteine.ansprechpartner=f.quest.contact.ansprechpartner;
+      if(!f.quest.bausteine.adressblock&&f.quest.contact.adresse) f.quest.bausteine.adressblock=f.quest.contact.adresse;
+      parsed=true;
+      updateStatusStrip(f); refreshAllPrompts(f);
+      f.quest.stepStatus[si]='geprüft';
+      toast('Kontaktdaten eingelesen! ✓');
+    } else {
+      f.quest.extracted[si]=raw;
+      toast('JSON nicht erkannt — als Text gespeichert.');
+    }
+  }
+  else if(s.rt==='text'){
+    var jo3=extractJSON(raw);
+    if(jo3&&jo3.stichpunkte_roh){
+      f.quest.extracted[si]=jo3.stichpunkte_roh;
+      if(jo3.besonderheit) f.quest.extracted[si+'_bsd']=jo3.besonderheit;
+      if(jo3.kernkompetenzen) f.quest.extracted[si+'_kk']=jo3.kernkompetenzen.join(', ');
+      // auto-fill skillmatch baustein
+      if(!f.quest.bausteine.skillmatch&&jo3.kernkompetenzen) f.quest.bausteine.skillmatch=jo3.kernkompetenzen.map(function(k){return '- '+k;}).join('\n');
+      if(!f.quest.bausteine.firmenbezug&&jo3.besonderheit) f.quest.bausteine.firmenbezug=jo3.besonderheit;
+      parsed=true;
+      f.quest.stepStatus[si]='geprüft';
+      toast('Stichpunkte strukturiert gespeichert ✓');
+    } else {
+      f.quest.extracted[si]=extractCode(raw);
+      toast('Als Text gespeichert ✓');
+    }
+    refreshAllPrompts(f);
+  }
+  else if(s.rt==='anschreiben'){
+    var jo4=extractJSON(raw);
+    if(jo4&&jo4.anschreiben_text){
+      f.quest.extracted[si]=jo4.anschreiben_text.replace(/\\n/g,'\n');
+      if(!f.quest.bausteine.motivationssatz&&jo4.firmenspezifischer_satz) f.quest.bausteine.motivationssatz=jo4.firmenspezifischer_satz;
+      parsed=true;
+      f.quest.stepStatus[si]='geprüft';
+      toast('Anschreiben strukturiert gespeichert ✓');
+    } else {
+      f.quest.extracted[si]=raw.trim();
+      toast('Als Text gespeichert ✓');
+    }
+    refreshAllPrompts(f);
+  }
+
+  save(); renderExtracted(si,f);
+  var badge2=document.querySelector('#ss-'+si+' .sstatus');
+  if(badge2){var st2=f.quest.stepStatus[si];badge2.textContent=st2;badge2.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st2]||'ss-offen');}
+  updateMobileBar(f); renderQuestOverview(); drawMap();
+}
 
 function saveReturn(si) {
+  // For non-structural steps: legacy single-stage save
   var f=getFirm(activeQuestFirmId); if(!f) return;
+  var s=STEPS[si];
+  if(s.structural){
+    // Structural steps use saveRaw/saveNormalized — this path is the raw stage
+    saveRaw(si); return;
+  }
   var ta=document.getElementById('sr-'+si); if(!ta) return;
   var raw=ta.value.trim(); if(!raw){toast('Nichts eingefügt!');return;}
-  var s=STEPS[si]; f.quest.returns[si]=raw;
-  if(s.rt==='verdict'){f.quest.verdict=parseVerdict(raw);f.quest.extracted[si]=f.quest.verdict;updateStatusStrip(f);}
-  else if(s.rt==='contact'){
-    var p=parseContact(raw);
-    if(p){f.quest.contact={ansprechpartner:p.ansprechpartner||'',anrede:p.anrede||'Sehr geehrte Damen und Herren',email:p.email||'',adresse:(p.adresse||'').replace(/\\n/g,'\n')};
-    updateStatusStrip(f);refreshAllPrompts(f);toast('Kontaktdaten eingelesen! ✓');}
-    else{f.quest.extracted[si]=raw;toast('JSON nicht gefunden — gespeichert.');}
-  }
-  else if(s.rt==='text'){f.quest.extracted[si]=extractCode(raw);}
+  f.quest.returns[si]=raw; f.quest.rawReturns[si]=raw;
+  if(s.rt==='text'){f.quest.extracted[si]=extractCode(raw);}
   else if(s.rt==='anschreiben'){f.quest.extracted[si]=raw.trim();}
   save(); renderExtracted(si,f);
   if(si===2||si===3) refreshAllPrompts(f);
-  if(s.rt!=='contact') toast('Gespeichert! ✓');
-  // auto-advance step status to Rohentwurf when result saved
+  toast('Gespeichert! ✓');
   var cur=f.quest.stepStatus[si]||'offen';
   if(cur==='offen'||cur==='begonnen') { f.quest.stepStatus[si]='Rohentwurf'; save(); }
-  updateMobileBar(f);
-  renderQuestOverview(); drawMap();
+  updateMobileBar(f); renderQuestOverview(); drawMap();
 }
 
 function renderExtracted(si,f) {
@@ -1692,8 +1875,10 @@ function clearReturn(si) {
   var f=getFirm(activeQuestFirmId); if(!f) return;
   var s=STEPS[si];
   delete f.quest.returns[si]; delete f.quest.extracted[si];
+  delete f.quest.rawReturns[si]; delete f.quest.normalizedReturns[si];
   if(s.rt==='verdict') f.quest.verdict='';
   if(s.rt==='contact') f.quest.contact={ansprechpartner:'',anrede:'',email:'',adresse:''};
+  if((f.quest.stepStatus[si]||'erledigt')!=='offen') f.quest.stepStatus[si]='offen';
   save(); updateStatusStrip(f); refreshAllPrompts(f);
   openSteps={}; renderQuestSteps(f); toast('Gelöscht.');
 }
@@ -1735,7 +1920,8 @@ function renderQuestSteps(f){
     if(i===6&&f.quest.contact.anrede) hint='<div class="inj-badge">◈ Anrede aus Schritt 2 eingebaut</div>';
     var rz='';
     if(s.rt){
-      var sr=f.quest.returns[i]||'';
+      var hasRaw=!!(f.quest.rawReturns[i]||f.quest.returns[i]);
+      var hasNorm=!!f.quest.normalizedReturns[i];
       var hasEx=s.rt==='contact'?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.adresse):f.quest.extracted[i];
       var exIn='';
       if(s.rt==='contact'&&(f.quest.contact.ansprechpartner||f.quest.contact.anrede)){
@@ -1747,15 +1933,57 @@ function renderQuestSteps(f){
           +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((ct.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
           +'</div>';
       } else if(f.quest.extracted[i]){ exIn='<div class="exc">'+esc(f.quest.extracted[i])+'</div>'; }
-      rz='<div class="dvd"></div><div class="rzone">'
-        +'<div class="rzl">↵ Ergebnis einfügen</div>'
-        +'<textarea id="sr-'+i+'" rows="3" placeholder="'+esc(s.rh||'Antwort …')+'">'+esc(sr)+'</textarea>'
-        +'<div class="arow" style="margin-top:6px;">'
-        +'<button class="btn btn-v btn-sm" onclick="saveReturn('+i+')">💾 Speichern</button>'
-        +(sr?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Löschen</button>':'')
-        +'</div>'
-        +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte Daten</div>'+exIn+'</div>'
-        +'</div>';
+
+      if(s.structural){
+        // === TWO-STAGE UI ===
+        rz='<div class="dvd"></div><div class="rzone-structural">'
+          // Stage 1 — Raw
+          +'<div class="rz-stage rz-s1">'
+          +'<div class="rz-stage-head"><span>1 — Rohergebnis</span><span class="rz-stage-badge rz-badge-raw">'+(hasRaw?'✓ vorhanden':'leer')+'</span></div>'
+          +'<div class="rz-hint">'+esc(s.rh||'Antwort aus Perplexity/ChatGPT einfügen …')+'</div>'
+          +'<textarea id="sr-raw-'+i+'" rows="3" placeholder="Rohergebnis einfügen …">'+esc(f.quest.rawReturns[i]||f.quest.returns[i]||'')+'</textarea>'
+          +'<div class="arow" style="margin-top:6px;">'
+          +'<button class="btn btn-w btn-sm" onclick="saveRaw('+i+')">💾 Rohfassung speichern</button>'
+          +'<button class="btn btn-t btn-sm" onclick="genCleanPromptForStep('+i+')"'+(hasRaw?'':' disabled title="Erst Rohfassung speichern"')+'>🔧 Bereinigungs-Prompt</button>'
+          +'</div>'
+          +'</div>'
+          // Stage 2 — Clean Prompt box
+          +'<div class="rz-stage rz-s2" id="cpb-wrap-'+i+'"'+(hasRaw?'':' style="display:none"')+'>'
+          +'<div class="rz-stage-head"><span>2 — Bereinigungs-Prompt</span><span class="rz-stage-badge rz-badge-clean">für ChatGPT/Claude</span></div>'
+          +'<div class="rz-hint">Prompt generieren → in KI einfügen → strukturiertes JSON zurückkopieren</div>'
+          +'<div class="clean-prompt-box'+(hasNorm?'':'')+'" id="cpb-'+i+'"></div>'
+          +'<div class="arow">'
+          +'<button class="btn btn-m btn-sm" onclick="genCleanPromptForStep('+i+')">⚙ Prompt generieren &amp; kopieren</button>'
+          +'<a class="btn btn-w btn-sm" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>'
+          +'<a class="btn btn-w btn-sm" href="https://claude.ai" target="_blank" rel="noopener">Claude ↗</a>'
+          +'</div>'
+          +'</div>'
+          // Stage 3 — Normalized input
+          +'<div class="rz-stage rz-s3">'
+          +'<div class="rz-stage-head"><span>3 — Strukturierte Fassung</span><span class="rz-stage-badge rz-badge-ok">'+(hasNorm?'✓ vorhanden':'leer')+'</span></div>'
+          +'<div class="rz-hint">JSON-Antwort der KI hier einfügen — App parst und speichert strukturiert</div>'
+          +'<textarea id="sr-norm-'+i+'" rows="3" placeholder="JSON-Ergebnis aus ChatGPT/Claude …">'+esc(f.quest.normalizedReturns[i]||'')+'</textarea>'
+          +'<div class="arow" style="margin-top:6px;">'
+          +'<button class="btn btn-v btn-sm" onclick="saveNormalized('+i+')">✅ Strukturiert speichern</button>'
+          +(hasRaw?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Alles löschen</button>':'')
+          +'</div>'
+          +'</div>'
+          // Extracted data display
+          +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte/gespeicherte Daten</div>'+exIn+'</div>'
+          +'</div>';
+      } else {
+        // === LEGACY SINGLE-STAGE UI ===
+        var sr=f.quest.returns[i]||'';
+        rz='<div class="dvd"></div><div class="rzone">'
+          +'<div class="rzl">↵ Ergebnis einfügen</div>'
+          +'<textarea id="sr-'+i+'" rows="3" placeholder="'+esc(s.rh||'Antwort …')+'">'+esc(sr)+'</textarea>'
+          +'<div class="arow" style="margin-top:6px;">'
+          +'<button class="btn btn-v btn-sm" onclick="saveReturn('+i+')">💾 Speichern</button>'
+          +(sr?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Löschen</button>':'')
+          +'</div>'
+          +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte Daten</div>'+exIn+'</div>'
+          +'</div>';
+      }
     }
     html+='<div class="qstep'+(done?' done':'')+'" id="ss-'+i+'">'
       +'<div class="shead" onclick="toggleStep('+i+')">'
@@ -2132,6 +2360,9 @@ function gistApplyData(data){
     f.quest=f.quest||defaultQuest();
     if(!f.quest.stepStatus) f.quest.stepStatus={};
     if(!f.quest.bausteine) f.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
+    if(!f.quest.rawReturns) f.quest.rawReturns={};
+    if(!f.quest.normalizedReturns) f.quest.normalizedReturns={};
+    Object.keys(f.quest.returns||{}).forEach(function(k){if(f.quest.returns[k]&&!f.quest.rawReturns[k])f.quest.rawReturns[k]=f.quest.returns[k];});
     return f;
   });
   if(data.regions&&data.regions.length) S.regions=data.regions;
