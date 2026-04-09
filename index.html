@@ -667,7 +667,7 @@ textarea{resize:vertical;min-height:80px;}
     <div class="panel" id="panel-research">
       <div class="qs">
         <div class="qh">🔭 Deep Research Prompt</div>
-        <div class="notice">Bereits beworbene Firmen werden automatisch als Ausschluss eingebettet.</div>
+        <div class="notice">Alle bereits bekannten Firmen werden automatisch als Ausschluss eingebettet.</div>
         <div class="chips" id="sent-chips"></div>
         <div class="strow"><div class="stlbl">Region</div><input class="stinp" id="r-region" value="Bremen und Oldenburg" style="flex:1;"/></div>
         <div class="strow" style="margin-top:6px;"><div class="stlbl">Tech-Schwerpunkt</div><input class="stinp" id="r-focus" value="Java, C#, Web, App-Entwicklung" style="flex:1;"/></div>
@@ -902,6 +902,22 @@ function defaultQuest() {
     bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}
   };
 }
+function ensureQuestDefaults(q) {
+  q = q && typeof q==='object' ? q : {};
+  q.done = q.done && typeof q.done==='object' ? q.done : {};
+  q.returns = q.returns && typeof q.returns==='object' ? q.returns : {};
+  q.extracted = q.extracted && typeof q.extracted==='object' ? q.extracted : {};
+  q.rawReturns = q.rawReturns && typeof q.rawReturns==='object' ? q.rawReturns : {};
+  q.normalizedReturns = q.normalizedReturns && typeof q.normalizedReturns==='object' ? q.normalizedReturns : {};
+  q.contact = Object.assign({ansprechpartner:'',anrede:'',email:'',adresse:''}, (q.contact && typeof q.contact==='object') ? q.contact : {});
+  q.verdict = typeof q.verdict==='string' ? q.verdict : '';
+  q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
+  q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
+  Object.keys(q.returns).forEach(function(k){
+    if(q.returns[k] && !q.rawReturns[k]) q.rawReturns[k]=q.returns[k];
+  });
+  return q;
+}
 function defaultS() {
   return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{} };
 }
@@ -939,15 +955,7 @@ function load() {
       if (!S.cfg) S.cfg = {};
       // Ensure all firms have quest objects with new fields
       S.firms.forEach(function(f) {
-        if (!f.quest) f.quest = defaultQuest();
-        if (!f.quest.stepStatus) f.quest.stepStatus = {};
-        if (!f.quest.bausteine) f.quest.bausteine = {ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
-        if (!f.quest.rawReturns) f.quest.rawReturns = {};
-        if (!f.quest.normalizedReturns) f.quest.normalizedReturns = {};
-        // Migrate: copy existing returns to rawReturns where not already set
-        Object.keys(f.quest.returns||{}).forEach(function(k){
-          if(f.quest.returns[k]&&!f.quest.rawReturns[k]) f.quest.rawReturns[k]=f.quest.returns[k];
-        });
+        f.quest = ensureQuestDefaults(f.quest);
       });
     }
   } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
@@ -1492,8 +1500,16 @@ function mbaSave() {
   for(var k in openSteps){
     if(openSteps[k]){
       var si=parseInt(k);
-      var ta=document.getElementById('sr-'+si);
-      if(ta&&ta.value.trim()) { saveReturn(si); return; }
+      var s=STEPS[si]||{};
+      if(s.structural){
+        var normTa=document.getElementById('sr-norm-'+si);
+        if(normTa&&normTa.value.trim()) { saveNormalized(si); return; }
+        var rawTa=document.getElementById('sr-raw-'+si);
+        if(rawTa&&rawTa.value.trim()) { saveRaw(si); return; }
+      } else {
+        var ta=document.getElementById('sr-'+si);
+        if(ta&&ta.value.trim()) { saveReturn(si); return; }
+      }
     }
   }
   toast('Kein Ergebnis-Feld offen oder leer');
@@ -1628,8 +1644,8 @@ function runDirectIntake(){
     parsed.forEach(function(item){
       if(!item.name){skipped++;return;}
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();if(!ex.quest.bausteine)ex.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};updated++;lines.push({name:item.name,action:'aktualisiert'});}
-      else{var nf=Object.assign(newFirm(item.name),item,{quest:defaultQuest()});S.firms.push(nf);added++;lines.push({name:item.name,action:'neu'});}
+      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);updated++;lines.push({name:item.name,action:'aktualisiert'});}
+      else{var nf=Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)});S.firms.push(nf);added++;lines.push({name:item.name,action:'neu'});}
     });
   } else {
     // Plain text: extract firm names heuristically (lines starting with capital, containing GmbH/AG/etc.)
@@ -1688,9 +1704,22 @@ function parseContact(raw) {
 }
 function extractCode(raw){var m=raw.match(/```[\w]*\n?([\s\S]*?)```/);return m?m[1].trim():raw.trim();}
 function extractJSON(raw){
-  var m=raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/```\s*({[\s\S]*?})\s*```/);
-  if(!m) return null;
-  try{return JSON.parse(m[1].trim());}catch(e){return null;}
+  var txt=(raw||'').trim();
+  if(!txt) return null;
+  try{return JSON.parse(txt);}catch(e){}
+  var m=txt.match(/```json\s*([\s\S]*?)```/i)||txt.match(/```\s*([\s\S]*?)\s*```/);
+  if(m){
+    try{return JSON.parse((m[1]||'').trim());}catch(e){}
+  }
+  var startObj=txt.indexOf('{'), endObj=txt.lastIndexOf('}');
+  if(startObj!==-1&&endObj>startObj){
+    try{return JSON.parse(txt.slice(startObj,endObj+1).trim());}catch(e){}
+  }
+  var startArr=txt.indexOf('['), endArr=txt.lastIndexOf(']');
+  if(startArr!==-1&&endArr>startArr){
+    try{return JSON.parse(txt.slice(startArr,endArr+1).trim());}catch(e){}
+  }
+  return null;
 }
 
 // ----------------------------------------------------------------
@@ -2105,8 +2134,8 @@ function doImport(){
     arr.forEach(function(item){
       if(!item.name) return;
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();upd++;}
-      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:item.quest||defaultQuest()}));add++;}
+      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);upd++;}
+      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)}));add++;}
     });
     save();closeModal('import-modal');renderDB();drawMap();toast('Import: '+add+' neu, '+upd+' aktualisiert');
   }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
@@ -2158,8 +2187,8 @@ function importJSON(){
     arr.forEach(function(item){
       if(!item.name) return;
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);if(!ex.quest)ex.quest=defaultQuest();upd++;}
-      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:defaultQuest()}));add++;}
+      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);upd++;}
+      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)}));add++;}
     });
     save();drawMap();document.getElementById('r-json').value='';
     toast('Importiert: '+add+' neu, '+upd+' aktualisiert');
@@ -2346,7 +2375,7 @@ function gistMerge(){
     var added=0;
     remoteFirms.forEach(function(rf){
       var ex=findByName(rf.name);
-      if(!ex){S.firms.push(Object.assign(newFirm(rf.name),rf,{quest:rf.quest||defaultQuest()}));added++;}
+      if(!ex){S.firms.push(Object.assign(newFirm(rf.name),rf,{quest:ensureQuestDefaults(rf.quest)}));added++;}
     });
     save();renderDB();drawMap();
     setSyncStatus('Merge ✓ (+'+added+')',true,false);
@@ -2357,12 +2386,7 @@ function gistMerge(){
 
 function gistApplyData(data){
   if(data.firms) S.firms=data.firms.map(function(f){
-    f.quest=f.quest||defaultQuest();
-    if(!f.quest.stepStatus) f.quest.stepStatus={};
-    if(!f.quest.bausteine) f.quest.bausteine={ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''};
-    if(!f.quest.rawReturns) f.quest.rawReturns={};
-    if(!f.quest.normalizedReturns) f.quest.normalizedReturns={};
-    Object.keys(f.quest.returns||{}).forEach(function(k){if(f.quest.returns[k]&&!f.quest.rawReturns[k])f.quest.rawReturns[k]=f.quest.returns[k];});
+    f.quest=ensureQuestDefaults(f.quest);
     return f;
   });
   if(data.regions&&data.regions.length) S.regions=data.regions;
