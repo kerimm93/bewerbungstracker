@@ -586,6 +586,7 @@ textarea{resize:vertical;min-height:80px;}
           <div class="prog-lbl"><span>Fortschritt</span><span id="qd-prog-lbl">0/8</span></div>
           <div class="prog-track"><div class="prog-fill" id="qd-prog-fill" style="width:0%"></div></div>
         </div>
+        <div id="qd-momentum"></div>
         <div class="qs" style="margin-bottom:12px;">
           <div class="qh">Ziel</div>
           <div style="display:flex;gap:9px;align-items:center;margin-bottom:8px;">
@@ -1234,6 +1235,23 @@ function questPhases(f) {
   return [d[0]&&d[1]&&d[2], d[3]&&d[4], d[5]&&d[6], d[7]];
 }
 
+function stepWeightByStatus(st){
+  return ({offen:0,begonnen:0.25,'Rohentwurf':0.5,'geprüft':0.75,erledigt:1}[st]||0);
+}
+function questProgressValue(f){
+  var sum=0;
+  for(var i=0;i<STEPS.length;i++){
+    var st=(f.quest.stepStatus&&f.quest.stepStatus[i])||'offen';
+    var done=!!(f.quest.done&&f.quest.done[i]);
+    if(done&&st!=='erledigt') st='erledigt';
+    sum+=stepWeightByStatus(st);
+  }
+  return Math.round(sum*100)/100;
+}
+function fmtProgress(v){
+  return (Math.round(v*100)%100===0)?String(Math.round(v)):v.toFixed(2).replace(/\.?0+$/,'');
+}
+
 function renderQuestOverview() {
   renderNextQuestWidget();
   var wrap=document.getElementById('quest-overview');
@@ -1245,6 +1263,7 @@ function renderQuestOverview() {
   }
   wrap.innerHTML=active.map(function(f){
     var steps=Object.values(f.quest.done||{}).filter(Boolean).length;
+    var progress=questProgressValue(f);
     var phases=questPhases(f);
     var isAQ=String(f.id)===String(activeQuestFirmId);
     return '<div class="qcard'+(isAQ?' active-quest':'')+'" onclick="openQuestDetail(\''+f.id+'\')">' +
@@ -1258,7 +1277,7 @@ function renderQuestOverview() {
         var col=st==='erledigt'?'var(--green)':st==='geprüft'?'var(--teal)':st==='Rohentwurf'?'var(--blue)':st==='begonnen'?'var(--gold)':'';
         return '<div class="sbar-cell'+(f.quest.done[i]?' done':'')+'"'+(col&&!f.quest.done[i]?' style="background:'+col+';opacity:.5"':'')+' title="'+esc(st)+'"></div>';
       }).join('') + '</div>' +
-      '<div style="font-size:11px;color:var(--ink-light);margin-top:5px;">'+steps+'/8 Schritte · ' + (function(){var ns=getNextStep(f);return ns?'➤ '+esc(STEPS[ns.idx].name):'Alle erledigt ✓';})() + '</div>' +
+      '<div style="font-size:11px;color:var(--ink-light);margin-top:5px;">'+fmtProgress(progress)+'/8 Fortschritt · ' + (function(){var ns=getNextStep(f);return ns?'➤ '+esc(STEPS[ns.idx].name):'Alle erledigt ✓';})() + '</div>' +
       '</div></div>';
   }).join('');
 }
@@ -1274,7 +1293,7 @@ function openQuestDetail(id) {
   document.getElementById('qd-title').textContent=f.name;
   document.getElementById('qd-obs').textContent='r.FIAE.PS.Bewerbungen.'+f.name.trim();
   document.getElementById('qd-folder').textContent='Bewerbung_'+f.name.trim().replace(/\s+/g,'_');
-  updateStatusStrip(f); renderQuestSteps(f); renderBausteine(f); updateMobileBar(f); drawMap();
+  updateStatusStrip(f); renderQuestSteps(f); renderBausteine(f); updateMomentumModule(f); updateMobileBar(f); drawMap();
   // auto-open next open step
   var ns=getNextStep(f);
   if(ns) { setTimeout(function(){ if(!document.getElementById('sb-'+ns.idx+'').classList.contains('open')) toggleStep(ns.idx); },150); }
@@ -1301,9 +1320,76 @@ function updateStatusStrip(f) {
   else{addrEl.textContent='— noch nicht ermittelt';addrEl.classList.add('empty');}
 }
 function updateProgress(f) {
-  var done=Object.values(f.quest.done||{}).filter(Boolean).length;
-  document.getElementById('qd-prog-lbl').textContent=done+'/8';
-  document.getElementById('qd-prog-fill').style.width=Math.round(done/8*100)+'%';
+  var p=questProgressValue(f);
+  document.getElementById('qd-prog-lbl').textContent=fmtProgress(p)+' / 8 Fortschritt';
+  document.getElementById('qd-prog-fill').style.width=Math.round((p/8)*100)+'%';
+}
+
+function setStepDoneState(si,isDone){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  f.quest.done[si]=!!isDone;
+  if(isDone) f.quest.stepStatus[si]='erledigt';
+  else if(f.quest.stepStatus[si]==='erledigt') f.quest.stepStatus[si]='geprüft';
+  var g=document.getElementById('sg-'+si);
+  if(g){g.classList.toggle('cl',!!f.quest.done[si]);g.textContent=f.quest.done[si]?'✓':(si+1);}
+  var card=document.getElementById('ss-'+si);
+  if(card) card.classList.toggle('done',!!f.quest.done[si]);
+  var badge=card?card.querySelector('.sstatus'):null;
+  if(badge){var st=f.quest.stepStatus[si]||'offen';badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
+  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
+}
+
+function markStepDoneToggle(si){ setStepDoneState(si, !((getFirm(activeQuestFirmId)||{quest:{done:{}}}).quest.done[si])); }
+
+function completeLateStep(si){
+  var labels={5:'PDF-Dateiname erstellt',6:'Mail übernommen',7:'Tracking eingetragen'};
+  setStepDoneState(si,true);
+  toast((labels[si]||'Schritt erledigt')+' ✓');
+}
+
+function markEmailSent(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  setStepDoneState(6,true);
+  if(f.status==='offen') f.status='versendet';
+  if(!f.bewerbungsDatum) f.bewerbungsDatum=today();
+  save(); renderDB(); renderQuestOverview(); drawMap();
+  toast('E-Mail als versendet markiert ✓');
+}
+
+function findNextMomentumFirm(curId){
+  var candidates=S.firms.filter(function(x){return x.status==='offen'&&String(x.id)!==String(curId)&&questProgressValue(x)<8;});
+  if(!candidates.length) return null;
+  var started=candidates.filter(function(x){
+    return Object.keys(x.quest.stepStatus||{}).some(function(k){return x.quest.stepStatus[k]&&x.quest.stepStatus[k]!=='offen';});
+  });
+  var pool=started.length?started:candidates;
+  pool.sort(function(a,b){return questProgressValue(b)-questProgressValue(a);});
+  return pool[0]||null;
+}
+
+function updateMomentumModule(f){
+  var box=document.getElementById('qd-momentum'); if(!box||!f) return;
+  var p=questProgressValue(f);
+  var remaining=8-p;
+  var show=(remaining<=2)||p>=8;
+  var next=findNextMomentumFirm(f.id);
+  if(!show||!next){box.innerHTML='';return;}
+  var ns=getNextStep(next);
+  box.innerHTML='<div class="qs" style="margin-bottom:12px;">'
+    +'<div class="qh">⚡ Momentum</div>'
+    +'<div class="notice">Fast fertig? Bleib im Flow und spring direkt zur nächsten sinnvollen Quest.</div>'
+    +'<div class="arow">'
+    +'<button class="btn btn-q btn-sm" onclick="jumpToMomentumQuest()">Zur nächsten Quest</button>'
+    +'<span style="font-size:12px;color:var(--ink-light);">'+esc(next.name)+(ns?' · nächster Schritt: '+esc(ns.step.name):'')+'</span>'
+    +'</div></div>';
+}
+
+function jumpToMomentumQuest(){
+  var cur=getFirm(activeQuestFirmId); if(!cur) return;
+  var next=findNextMomentumFirm(cur.id);
+  if(!next){toast('Keine nächste offene Quest gefunden.');return;}
+  openQuestDetail(next.id);
+  toast('Weiter mit '+next.name+' ⚡');
 }
 function saveQuestToDB() {
   var f=getFirm(activeQuestFirmId); if(!f) return;
@@ -1400,7 +1486,7 @@ function cycleStepStatus(si) {
   else if(cur==='erledigt') { f.quest.done[si]=false; var g2=document.getElementById('sg-'+si);if(g2){g2.classList.remove('cl');g2.textContent=(si+1);} var card2=document.getElementById('ss-'+si);if(card2)card2.classList.remove('done'); }
   var badge=document.querySelector('#ss-'+si+' .sstatus');
   if(badge){var stCls={offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[next]||'ss-offen';badge.textContent=next;badge.className='sstatus '+stCls;}
-  updateProgress(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
+  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
   toast('Status: '+next);
 }
 
@@ -1412,6 +1498,7 @@ function copyPromptAndSetStatus(si, fid, btn) {
     f.quest.stepStatus[si]='begonnen';
     var badge=document.querySelector('#ss-'+si+' .sstatus');
     if(badge){badge.textContent='begonnen';badge.className='sstatus ss-begonnen';}
+    updateProgress(f); updateMomentumModule(f); renderQuestOverview(); drawMap();
     save();
   }
 }
@@ -1441,23 +1528,26 @@ function getNextStep(f) {
 function renderNextQuestWidget() {
   var wrap=document.getElementById('next-quest-widget'); if(!wrap) return;
   // Find the firm with the most progress that still has open steps
-  var candidates=S.firms.filter(function(f){return f.status==='offen';});
+  var candidates=S.firms.filter(function(f){return f.status==='offen'&&questProgressValue(f)<8;});
   if(!candidates.length){wrap.innerHTML='';return;}
-  // Sort: most steps done but not all done
+  // Sort: started first, then by weighted progress
   candidates.sort(function(a,b){
-    var da=Object.values(a.quest.done||{}).filter(Boolean).length;
-    var db=Object.values(b.quest.done||{}).filter(Boolean).length;
-    if(da!==db) return db-da; // more done = higher priority
+    var sa=Object.keys(a.quest.stepStatus||{}).some(function(k){return (a.quest.stepStatus[k]||'offen')!=='offen';})?1:0;
+    var sb=Object.keys(b.quest.stepStatus||{}).some(function(k){return (b.quest.stepStatus[k]||'offen')!=='offen';})?1:0;
+    if(sa!==sb) return sb-sa;
+    var da=questProgressValue(a);
+    var db=questProgressValue(b);
+    if(da!==db) return db-da;
     return 0;
   });
   var f=candidates[0];
   var ns=getNextStep(f);
   if(!ns){wrap.innerHTML='';return;}
-  var stepsTotal=Object.values(f.quest.done||{}).filter(Boolean).length;
+  var stepsTotal=questProgressValue(f);
   wrap.innerHTML='<div class="nq-card" onclick="openQuestDetail(\''+f.id+'\')">'
     +'<div class="nq-icon">⚡</div>'
     +'<div class="nq-body">'
-    +'<div class="nq-firm">'+esc(f.name)+'<span style="font-size:11px;color:var(--ink-light);font-weight:400;margin-left:8px;">'+stepsTotal+'/8</span></div>'
+    +'<div class="nq-firm">'+esc(f.name)+'<span style="font-size:11px;color:var(--ink-light);font-weight:400;margin-left:8px;">'+fmtProgress(stepsTotal)+'/8</span></div>'
     +'<div class="nq-step">➤ Nächster Schritt: <strong>'+esc(ns.step.name)+'</strong></div>'
     +'<div class="nq-hint">Tippe hier für den direkten Wiedereinstieg</div>'
     +'</div>'
@@ -1826,7 +1916,7 @@ function saveRaw(si) {
   // show the clean prompt box with fresh raw
   var box=document.getElementById('cpb-'+si);
   if(box&&box.classList.contains('vis')){box.textContent=getCleanPrompt(si,f);}
-  updateMobileBar(f);
+  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); renderQuestOverview(); drawMap();
 }
 
 // ----------------------------------------------------------------
@@ -1935,7 +2025,7 @@ function saveNormalized(si) {
   save(); renderExtracted(si,f);
   var badge2=document.querySelector('#ss-'+si+' .sstatus');
   if(badge2){var st2=f.quest.stepStatus[si];badge2.textContent=st2;badge2.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st2]||'ss-offen');}
-  updateMobileBar(f); renderQuestOverview(); drawMap();
+  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); renderQuestOverview(); drawMap();
 }
 
 function saveReturn(si) {
@@ -1956,7 +2046,7 @@ function saveReturn(si) {
   toast('Gespeichert! ✓');
   var cur=f.quest.stepStatus[si]||'offen';
   if(cur==='offen'||cur==='begonnen') { f.quest.stepStatus[si]='Rohentwurf'; save(); }
-  updateMobileBar(f); renderQuestOverview(); drawMap();
+  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); renderQuestOverview(); drawMap();
 }
 
 function renderExtracted(si,f) {
@@ -2001,18 +2091,7 @@ function toggleStep(si){
 }
 
 function markDone(si,g) {
-  var f=getFirm(activeQuestFirmId); if(!f) return;
-  f.quest.done[si]=!f.quest.done[si];
-  if(f.quest.done[si]) f.quest.stepStatus[si]='erledigt';
-  else if(f.quest.stepStatus[si]==='erledigt') f.quest.stepStatus[si]='geprüft';
-  g.classList.toggle('cl',!!f.quest.done[si]);
-  g.textContent=f.quest.done[si]?'✓':(si+1);
-  var card=document.getElementById('ss-'+si);
-  if(card) card.classList.toggle('done',!!f.quest.done[si]);
-  // Update status badge text
-  var badge=card?card.querySelector('.sstatus'):null;
-  if(badge){var st=f.quest.stepStatus[si]||'offen';badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
-  updateProgress(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
+  markStepDoneToggle(si);
 }
 
 function renderQuestSteps(f){
@@ -2028,6 +2107,12 @@ function renderQuestSteps(f){
     if(i===3&&f.quest.extracted[2]) hint='<div class="inj-badge">◈ Stichpunkte aus Schritt 3 eingebaut</div>';
     if(i===4&&f.quest.extracted[3]) hint='<div class="inj-badge">◈ Anschreiben aus Schritt 4 eingebaut</div>';
     if(i===6&&f.quest.contact.anrede) hint='<div class="inj-badge">◈ Anrede aus Schritt 2 eingebaut</div>';
+    var doneBtn='<button class="btn btn-v btn-sm" onclick="markStepDoneToggle('+i+')">'+(done?'↩ Erledigt zurücknehmen':'✓ Als erledigt markieren')+'</button>';
+    var quickBtns='';
+    if(i===5) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(5)">PDF-Dateiname erstellt</button>';
+    if(i===6) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(6)">Mail übernommen</button>'
+      +'<button class="btn btn-q btn-sm" onclick="markEmailSent()">E-Mail versendet</button>';
+    if(i===7) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(7)">Tracking eingetragen</button>';
     var rz='';
     if(s.rt){
       var hasRaw=!!(f.quest.rawReturns[i]||f.quest.returns[i]);
@@ -2113,6 +2198,7 @@ function renderQuestSteps(f){
       +'<div class="arow">'
       +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 Prompt kopieren</button>'
       +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
+      +doneBtn+quickBtns
       +'</div>'+rz
       +'</div></div>';
   });
