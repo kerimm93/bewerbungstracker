@@ -922,7 +922,7 @@ function ensureQuestDefaults(q) {
   return q;
 }
 function defaultS() {
-  return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{} };
+  return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{}, deletedIds:{}, _lastExported:'' };
 }
 
 var S = defaultS();
@@ -931,6 +931,7 @@ var popupFirmId = null;
 var openFirms = {};
 var openSteps = {};
 var gistAutoSyncTimer = null;
+var _syncInProgress = false;
 var _rPrompt='', _cleanPrompt='', _track2Text='';
 
 // ----------------------------------------------------------------
@@ -943,9 +944,9 @@ function persistLocalOnly() {
 }
 
 function save() {
-  S._lastExported = new Date().toISOString();
+  if(!_syncInProgress) S._lastExported = new Date().toISOString();
   persistLocalOnly();
-  gistAutoSyncDebounced();
+  if(!_syncInProgress) gistAutoSyncDebounced();
 }
 
 function load() {
@@ -956,6 +957,8 @@ function load() {
       S = Object.assign(defaultS(), p);
       if (!S.regions || !S.regions.length) S.regions = [].concat(DEFAULT_REGIONS);
       if (!S.cfg) S.cfg = {};
+      if (!S.deletedIds || typeof S.deletedIds!=='object') S.deletedIds = {};
+      if (!S._lastExported) S._lastExported = '';
       // Ensure all firms have quest objects with new fields
       S.firms.forEach(function(f) {
         f.quest = ensureQuestDefaults(f.quest);
@@ -998,6 +1001,17 @@ function findByName(name) {
   if(exact) return exact;
   // 2. Normalized match (strips legal suffixes)
   return S.firms.find(function(f){return normalizeFirmName(f.name)===norm;});
+}
+function recordFirmDeletion(id){
+  if(!S.deletedIds||typeof S.deletedIds!=='object') S.deletedIds={};
+  S.deletedIds[String(id)] = new Date().toISOString();
+}
+function clearFirmDeletion(id){
+  if(!S.deletedIds||typeof S.deletedIds!=='object') return;
+  delete S.deletedIds[String(id)];
+}
+function isFirmDeleted(id){
+  return !!(S.deletedIds && S.deletedIds[String(id)]);
 }
 
 // ----------------------------------------------------------------
@@ -2279,8 +2293,8 @@ function toggleFC(id){
 function updF(id,field,val){
   var f=getFirm(id); if(!f) return; f[field]=val; save();
 }
-function addFirm(){ var f=newFirm('Neue Firma'); S.firms.unshift(f); save(); openFirms[String(f.id)]=true; renderDB(); toast('Neuer Eintrag.'); }
-function delFirm(id){ if(!confirm('Eintrag löschen?')) return; S.firms=S.firms.filter(function(f){return String(f.id)!==String(id);}); delete openFirms[String(id)]; save(); renderDB(); drawMap(); toast('Gelöscht.'); }
+function addFirm(){ var f=newFirm('Neue Firma'); clearFirmDeletion(f.id); S.firms.unshift(f); save(); openFirms[String(f.id)]=true; renderDB(); toast('Neuer Eintrag.'); }
+function delFirm(id){ if(!confirm('Eintrag löschen?')) return; recordFirmDeletion(id); S.firms=S.firms.filter(function(f){return String(f.id)!==String(id);}); delete openFirms[String(id)]; save(); renderDB(); drawMap(); toast('Gelöscht.'); }
 function loadToQuest(id){ activeQuestFirmId=id; openQuestDetail(id); switchTab('quest'); }
 
 function exportDB(){
@@ -2416,7 +2430,7 @@ function genTrackingSel(){
 }
 function cpTrack2(btn){copyText(_track2Text,btn);}
 function exportAll(){
-  var data={version:6,exportDate:today(),cfg:S.cfg||{},regions:S.regions,firms:S.firms,_lastExported:S._lastExported};
+  var data={version:6,exportDate:today(),cfg:S.cfg||{},regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{},_lastExported:S._lastExported};
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Quest_Backup_'+today()+'.json';a.click();
 }
@@ -2458,129 +2472,274 @@ function setSyncStatus(msg,ok,busy){
   msgEl.textContent=msg;
 }
 
+function githubHeaders(token, includeContentType){
+  var h={'Authorization':'token '+token,'Accept':'application/vnd.github+json'};
+  if(includeContentType) h['Content-Type']='application/json';
+  return h;
+}
+
 function gistBuildPayload(syncTs){
-  return {version:6,exported:syncTs,cfg:S.cfg||{},regions:S.regions,firms:S.firms};
+  return {version:6,exported:syncTs,cfg:S.cfg||{},regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{}};
 }
 
 function gistAutoSyncDebounced(){
-  if(!gistGetAuto()||!gistGetToken()||!gistGetId()) return;
+  if(_syncInProgress||!gistGetAuto()||!gistGetToken()||!gistGetId()) return;
   if(gistAutoSyncTimer) clearTimeout(gistAutoSyncTimer);
-  gistAutoSyncTimer=setTimeout(function(){gistAutoSyncTimer=null;gistDoPush(true);},30000);
+  gistAutoSyncTimer=setTimeout(function(){gistAutoSyncTimer=null;gistSync({mode:'auto',silent:true});},30000);
+}
+
+function stableStringify(v){
+  if(v===null||typeof v!=='object') return JSON.stringify(v);
+  if(Array.isArray(v)) return '['+v.map(stableStringify).join(',')+']';
+  var keys=Object.keys(v).sort();
+  return '{'+keys.map(function(k){return JSON.stringify(k)+':'+stableStringify(v[k]);}).join(',')+'}';
+}
+function normalizePayloadForCompare(data){
+  var p=data&&typeof data==='object'?JSON.parse(JSON.stringify(data)):{};
+  if(p.S){ p.S._lastExported=''; }
+  if(p._lastExported!==undefined) p._lastExported='';
+  if(p.exported!==undefined) p.exported='';
+  return p;
+}
+
+function pickBetterDate(a,b){
+  if(!a) return b||'';
+  if(!b) return a||'';
+  return a>b?a:b;
+}
+
+function mergeQuest(localQ, remoteQ){
+  var l=ensureQuestDefaults(localQ), r=ensureQuestDefaults(remoteQ);
+  var q=defaultQuest();
+  var keys=Object.keys(l.done||{}).concat(Object.keys(r.done||{}));
+  keys.forEach(function(k){ q.done[k]=!!(l.done[k]||r.done[k]); });
+  var retKeys=Object.keys(l.returns||{}).concat(Object.keys(r.returns||{}));
+  retKeys.forEach(function(k){ q.returns[k]=r.returns[k]||l.returns[k]||''; });
+  var rawKeys=Object.keys(l.rawReturns||{}).concat(Object.keys(r.rawReturns||{}));
+  rawKeys.forEach(function(k){ q.rawReturns[k]=r.rawReturns[k]||l.rawReturns[k]||q.returns[k]||''; });
+  var normKeys=Object.keys(l.normalizedReturns||{}).concat(Object.keys(r.normalizedReturns||{}));
+  normKeys.forEach(function(k){ q.normalizedReturns[k]=r.normalizedReturns[k]||l.normalizedReturns[k]||''; });
+  var extKeys=Object.keys(l.extracted||{}).concat(Object.keys(r.extracted||{}));
+  extKeys.forEach(function(k){ q.extracted[k]=r.extracted[k]||l.extracted[k]||''; });
+  q.contact = Object.assign({}, l.contact||{}, r.contact||{});
+  if(!q.contact.ansprechpartner) q.contact.ansprechpartner=(l.contact&&l.contact.ansprechpartner)||'';
+  if(!q.contact.email) q.contact.email=(l.contact&&l.contact.email)||'';
+  if(!q.contact.adresse) q.contact.adresse=(l.contact&&l.contact.adresse)||'';
+  if(!q.contact.anrede) q.contact.anrede=(l.contact&&l.contact.anrede)||'';
+  q.checkResult = (r.checkResult&&Object.keys(r.checkResult).length)?r.checkResult:(l.checkResult||null);
+  q.verdict = r.verdict||l.verdict||'';
+  var stepKeys=Object.keys(l.stepStatus||{}).concat(Object.keys(r.stepStatus||{}));
+  stepKeys.forEach(function(k){
+    var ls=l.stepStatus[k]||'offen', rs=r.stepStatus[k]||'offen';
+    q.stepStatus[k]=STEP_STATUSES[Math.max(STEP_STATUSES.indexOf(ls),STEP_STATUSES.indexOf(rs),0)]||rs||ls;
+  });
+  q.bausteine = Object.assign({}, l.bausteine||{}, r.bausteine||{});
+  BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
+  return ensureQuestDefaults(q);
+}
+
+function mergeFirm(localFirm, remoteFirm){
+  var l=Object.assign(newFirm(localFirm&&localFirm.name), localFirm||{});
+  var r=Object.assign(newFirm(remoteFirm&&remoteFirm.name), remoteFirm||{});
+  l.quest=ensureQuestDefaults(l.quest); r.quest=ensureQuestDefaults(r.quest);
+  var merged=Object.assign({}, l);
+  function pickText(remoteVal, localVal){
+    var rv = (typeof remoteVal==='string') ? remoteVal.trim() : remoteVal;
+    var lv = (typeof localVal==='string') ? localVal.trim() : localVal;
+    return (rv!=='' && rv!==null && rv!==undefined) ? remoteVal : (lv!=='' && lv!==null && lv!==undefined ? localVal : '');
+  }
+  merged.name = pickText(r.name, l.name);
+  merged.region = pickText(r.region, l.region);
+  merged.kategorie = pickText(r.kategorie, l.kategorie) || 'unklar';
+  merged.ansprechpartner = pickText(r.ansprechpartner, l.ansprechpartner);
+  merged.anrede = pickText(r.anrede, l.anrede);
+  merged.email = pickText(r.email, l.email);
+  merged.adresse = pickText(r.adresse, l.adresse);
+  merged.anschreibenSatz = pickText(r.anschreibenSatz, l.anschreibenSatz);
+  merged.stichpunkte = pickText(r.stichpunkte, l.stichpunkte);
+  merged.eignungsurteil = pickText(r.eignungsurteil, l.eignungsurteil);
+  merged.notizen = pickText(r.notizen, l.notizen);
+  merged.bewerbungsDatum = pickBetterDate(l.bewerbungsDatum, r.bewerbungsDatum);
+  var ls=l.status||'offen', rs=r.status||'offen';
+  if(ls==='versendet'||rs==='versendet') merged.status='versendet';
+  else if(ls===rs) merged.status=ls;
+  else merged.status=rs||ls;
+  merged.quest = mergeQuest(l.quest, r.quest);
+  return merged;
+}
+
+function mergeSyncData(localData, remoteData){
+  var baseLocal={cfg:localData.cfg||{},regions:localData.regions||[],firms:localData.firms||[],deletedIds:localData.deletedIds||{}};
+  var baseRemote={cfg:remoteData.cfg||{},regions:remoteData.regions||[],firms:remoteData.firms||[],deletedIds:remoteData.deletedIds||{}};
+  var merged={cfg:Object.assign({},baseLocal.cfg,baseRemote.cfg),regions:(baseRemote.regions&&baseRemote.regions.length)?baseRemote.regions:baseLocal.regions,firms:[],deletedIds:Object.assign({},baseLocal.deletedIds,baseRemote.deletedIds)};
+  var map={};
+  var idByNormName={};
+  baseLocal.firms.forEach(function(f){
+    if(!f||!f.id) return;
+    var fid=String(f.id);
+    map[fid]=mergeFirm(f, null);
+    var n=normalizeFirmName(f.name||'');
+    if(n && !idByNormName[n]) idByNormName[n]=fid;
+  });
+  baseRemote.firms.forEach(function(f){
+    if(!f) return;
+    var remoteId=f.id?String(f.id):'';
+    var byName=normalizeFirmName(f.name||'');
+    var key='';
+    if(remoteId && map[remoteId]) key=remoteId;
+    else if(byName && idByNormName[byName]) key=idByNormName[byName];
+    else if(remoteId) key=remoteId;
+    else if(byName){
+      key='name:'+byName;
+      if(map[key] && map[key].id) key=String(map[key].id);
+    }
+    if(!key) return;
+    if(map[key]) map[key]=mergeFirm(map[key], f);
+    else{
+      var localMatch=(key.indexOf('name:')===0)?baseLocal.firms.find(function(lf){return normalizeFirmName(lf.name||'')===key.slice(5);}):baseLocal.firms.find(function(lf){return String(lf.id)===key;});
+      map[key]=mergeFirm(localMatch||newFirm(f.name), f);
+    }
+    if(byName && map[key] && map[key].id) idByNormName[byName]=String(map[key].id);
+  });
+  Object.keys(map).forEach(function(k){
+    var firm=map[k]; if(!firm||!firm.id) return;
+    if(!merged.deletedIds[String(firm.id)]) merged.firms.push(firm);
+  });
+  return merged;
+}
+
+async function getFullGistFileText(file){
+  if(!file) return '';
+  if(!file.truncated) return file.content||'';
+  var rr = await fetch(file.raw_url, {headers:{'Accept':'application/vnd.github.raw'}});
+  if(!rr.ok) throw new Error('Truncation-Raw HTTP '+rr.status);
+  return rr.text();
+}
+
+async function gistFetchRemote(token,id){
+  var res = await fetch('https://api.github.com/gists/'+id,{headers:githubHeaders(token)});
+  if(!res.ok) throw new Error('GET HTTP '+res.status);
+  var gist = await res.json();
+  var file = gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+  if(!file) return null;
+  var fullText = await getFullGistFileText(file);
+  if(!fullText) return null;
+  return JSON.parse(fullText);
+}
+
+async function gistPushPayload(token,id,payload,silent){
+  var prevTs=S._lastExported||'';
+  var syncTs=new Date().toISOString();
+  S._lastExported=syncTs;
+  try{
+    var toSend = Object.assign({}, payload||{}, {version:6, exported:syncTs});
+    var r = await fetch('https://api.github.com/gists/'+id,{
+      method:'PATCH',
+      headers:githubHeaders(token,true),
+      body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(toSend,null,2)}}})
+    });
+    if(!r.ok) throw new Error('PATCH HTTP '+r.status);
+    persistLocalOnly();
+    setSyncStatus('Synchronisiert ✓',true,false);
+    if(!silent) toast('☁ Synchronisiert');
+  }catch(e){
+    S._lastExported=prevTs;
+    persistLocalOnly();
+    throw e;
+  }
+}
+
+async function gistSync(opts){
+  opts=opts||{};
+  var silent=!!opts.silent, mode=opts.mode||'sync';
+  if(_syncInProgress){ if(!silent) toast('Sync läuft bereits.'); return {skipped:true,reason:'busy'}; }
+  var token=gistGetToken(),id=gistGetId();
+  if(!token||!id){ if(!silent) toast('⚠ Gist nicht konfiguriert!'); setSyncStatus('Nicht konfiguriert',false,false); return {skipped:true,reason:'config'}; }
+  _syncInProgress=true;
+  setSyncStatus('Synchronisiere …',true,true);
+  try{
+    var remoteData=null;
+    try{ remoteData = await gistFetchRemote(token,id); }
+    catch(e){ setSyncStatus('Abruf-Fehler',false,false); throw new Error('Abruf: '+e.message); }
+    if(mode==='pull'){
+      if(remoteData){ gistApplyData(remoteData,{skipRender:false}); setSyncStatus('Heruntergeladen ✓',true,false); if(!silent) toast('⬇ Daten geladen'); return {pulled:true}; }
+      setSyncStatus('Keine Remote-Datei',true,false); return {skipped:true,reason:'no-remote'};
+    }
+    var localData=gistBuildPayload(S._lastExported||'');
+    if(mode==='push' && !remoteData){
+      await gistPushPayload(token,id,localData,silent);
+      return {pushed:true,reason:'push-new'};
+    }
+    remoteData = remoteData || {version:6,exported:'',cfg:{},regions:[],firms:[],deletedIds:{}};
+    var localTime=S._lastExported||'';
+    var remoteTime=remoteData.exported||'';
+    var mergedData;
+    try{ mergedData = mergeSyncData(localData, remoteData); }
+    catch(e){ setSyncStatus('Merge-Fehler',false,false); throw new Error('Merge: '+e.message); }
+    var mergedPayload={version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds};
+    var normalizedRemote=normalizePayloadForCompare(remoteData);
+    var normalizedMerged=normalizePayloadForCompare(mergedPayload);
+    var didChange = stableStringify(normalizePayloadForCompare(localData))!==stableStringify(normalizedMerged);
+    var needsPush = stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
+    gistApplyData(mergedPayload,{skipRender:true});
+    if(!needsPush && !didChange){
+      setSyncStatus('Sync ohne Änderungen',true,false);
+      if(!silent&&mode!=='auto') toast('Sync: keine Änderungen');
+      renderDB(); drawMap(); renderQuestOverview(); if(currentTab==='settings') updateInfoPanel();
+      return {noop:true};
+    }
+    if(needsPush || mode==='push'){
+      try{ await gistPushPayload(token,id,mergedPayload,silent); }
+      catch(e){ setSyncStatus('Push-Fehler',false,false); throw new Error('Push: '+e.message); }
+      gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false});
+      return {pushed:true,didChange:didChange,needsPush:needsPush,localTime:localTime,remoteTime:remoteTime};
+    }
+    setSyncStatus('Heruntergeladen ✓',true,false);
+    if(!silent&&mode!=='auto') toast('⬇ Daten geladen');
+    renderDB(); drawMap(); renderQuestOverview(); if(currentTab==='settings') updateInfoPanel();
+    return {pulled:true,didChange:didChange,needsPush:needsPush};
+  }catch(err){
+    if(!silent) toast('Sync-Fehler ('+(err.message||'unbekannt').slice(0,60)+')');
+    return {error:err};
+  }finally{
+    _syncInProgress=false;
+  }
 }
 
 function gistPush(silent){
-  var token=gistGetToken(),id=gistGetId();
-  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
-  setSyncStatus('Prüfe Cloud …',true,true);
-  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
-  .then(function(r){return r.json();})
-  .then(function(gist){
-    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-    if(!file||!file.content){gistDoPush(silent);return;}
-    var cloudData;try{cloudData=JSON.parse(file.content);}catch(e){gistDoPush(silent);return;}
-    if((cloudData.exported||'')>(S._lastExported||'')){
-      if(silent){toast('☁ Cloud ist neuer — kein Auto-Push.');setSyncStatus('Cloud neuer',true,false);return;}
-      if(confirm('Cloud-Version ist neuer als lokale Version.\n\nTrotzdem hochladen und Cloud überschreiben?')){gistDoPush(false);}
-      else{gistApplyData(cloudData);toast('⬇ Cloud-Version geladen.');}
-    } else {gistDoPush(silent);}
-  })
-  .catch(function(e){setSyncStatus('Fehler: '+e.message.slice(0,30),false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
-}
-
-function gistDoPush(silent){
-  var token=gistGetToken(),id=gistGetId();
-  var prevTs=S._lastExported||'';
-  // One shared timestamp for both payload and local state
-  var syncTs=new Date().toISOString();
-  S._lastExported=syncTs;
-  setSyncStatus('Hochladen …',true,true);
-  fetch('https://api.github.com/gists/'+id,{
-    method:'PATCH',
-    headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(gistBuildPayload(syncTs),null,2)}}})
-  })
-  .then(function(r){
-    if(!r.ok){S._lastExported=prevTs;throw new Error('HTTP '+r.status);}
-    persistLocalOnly(); // persist with the syncTs we just set
-    setSyncStatus('Synchronisiert ✓',true,false);
-    if(!silent)toast('☁ Hochgeladen!');
-  })
-  .catch(function(e){
-    S._lastExported=prevTs; // revert on failure
-    setSyncStatus('Fehler',false,false);
-    if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));
-  });
+  gistSync({mode:'push',silent:!!silent});
 }
 
 function gistPull(silent){
-  var token=gistGetToken(),id=gistGetId();
-  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
-  setSyncStatus('Herunterladen …',true,true);
-  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
-  .then(function(r){return r.json();})
-  .then(function(gist){
-    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-    if(!file||!file.content){toast('Gist-Datei nicht gefunden.');setSyncStatus('Fehler',false,false);return;}
-    var data;try{data=JSON.parse(file.content);}catch(e){toast('JSON-Fehler im Gist.');return;}
-    if(!silent&&(data.exported||'')<=(S._lastExported||'')){
-      if(!confirm('Lokale Version ist aktueller. Trotzdem überschreiben?')) return;
-    }
-    gistApplyData(data);
-    setSyncStatus('Heruntergeladen ✓',true,false);
-    if(!silent) toast('⬇ Daten aus Gist geladen!');
-  })
-  .catch(function(e){setSyncStatus('Fehler',false,false);if(!silent)toast('Gist-Fehler: '+e.message.slice(0,40));});
+  gistSync({mode:'pull',silent:!!silent});
 }
 
 function gistMerge(){
-  var token=gistGetToken(),id=gistGetId();
-  if(!token||!id){toast('⚠ Gist nicht konfiguriert!');return;}
-  setSyncStatus('Merge …',true,true);
-  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
-  .then(function(r){return r.json();})
-  .then(function(gist){
-    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-    if(!file||!file.content){toast('Gist-Datei nicht gefunden.');return;}
-    var data;try{data=JSON.parse(file.content);}catch(e){toast('JSON-Fehler im Gist.');return;}
-    var remoteFirms=data.firms||[];
-    var added=0;
-    remoteFirms.forEach(function(rf){
-      var ex=findByName(rf.name);
-      if(!ex){S.firms.push(Object.assign(newFirm(rf.name),rf,{quest:ensureQuestDefaults(rf.quest)}));added++;}
-    });
-    save();renderDB();drawMap();
-    setSyncStatus('Merge ✓ (+'+added+')',true,false);
-    toast('Merge: '+added+' neue Einträge hinzugefügt.');
-  })
-  .catch(function(e){setSyncStatus('Fehler',false,false);toast('Gist-Fehler: '+e.message.slice(0,40));});
+  gistSync({mode:'merge',silent:false});
 }
 
-function gistApplyData(data){
+function gistApplyData(data, opts){
+  opts=opts||{};
   if(data.firms) S.firms=data.firms.map(function(f){
     f.quest=ensureQuestDefaults(f.quest);
     return f;
   });
   if(data.regions&&data.regions.length) S.regions=data.regions;
   if(data.cfg) S.cfg=data.cfg;
+  if(data.deletedIds&&typeof data.deletedIds==='object') S.deletedIds=data.deletedIds;
+  if(!S.deletedIds||typeof S.deletedIds!=='object') S.deletedIds={};
+  S.firms = (S.firms||[]).filter(function(f){ return !isFirmDeleted(f.id); });
   // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it
-  S._lastExported=data.exported||S._lastExported||new Date().toISOString();
+  S._lastExported=data.exported||S._lastExported||'';
   persistLocalOnly();
-  renderDB(); drawMap(); renderQuestOverview();
-  if(currentTab==='settings') updateInfoPanel();
+  if(!opts.skipRender){
+    renderDB(); drawMap(); renderQuestOverview();
+    if(currentTab==='settings') updateInfoPanel();
+  }
 }
 
 function gistStartupSync(){
-  var token=gistGetToken(),id=gistGetId();
-  if(!token||!id||!gistGetAuto()) return;
-  fetch('https://api.github.com/gists/'+id,{headers:{'Authorization':'token '+token}})
-  .then(function(r){return r.json();})
-  .then(function(gist){
-    var file=gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-    if(!file||!file.content) return;
-    var data;try{data=JSON.parse(file.content);}catch(e){return;}
-    if((data.exported||'')>(S._lastExported||'')) gistApplyData(data);
-  })
-  .catch(function(){});
+  return gistSync({mode:'startup',silent:true});
 }
 
 // ================================================================
@@ -2619,12 +2778,14 @@ function seedIfEmpty(){
 // INIT
 // ================================================================
 load();
-seedIfEmpty();
 loadCfgUI();
-renderTabs();
-renderDBRegionFilter();
-renderQuestOverview();
-setTimeout(function(){ drawMap(); gistStartupSync(); }, 400);
+gistStartupSync().finally(function(){
+  seedIfEmpty();
+  renderTabs();
+  renderDBRegionFilter();
+  renderQuestOverview();
+  setTimeout(function(){ drawMap(); }, 200);
+});
 window.addEventListener('resize', function(){
   if(currentTab==='map') drawMap();
   // Re-evaluate mobile bar on orientation/resize
