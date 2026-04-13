@@ -444,6 +444,13 @@ textarea{resize:vertical;min-height:80px;}
   padding:12px;font-size:12px;color:var(--ink);line-height:1.7;
   white-space:pre-wrap;font-family:monospace;margin-top:8px;max-height:300px;overflow-y:auto;
 }
+.check-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:800;font-family:var(--body);
+  padding:4px 10px;border-radius:999px;border:1px solid;
+}
+.cb-warn{background:rgba(231,76,60,.12);color:var(--red);border-color:var(--red-dark);}
+.cb-ok{background:rgba(46,204,113,.14);color:var(--green);border-color:var(--green-dark);}
 
 /* === MOBILE BOTTOM ACTION BAR === */
 #mobile-bottom-bar{
@@ -586,6 +593,7 @@ textarea{resize:vertical;min-height:80px;}
           <div class="prog-lbl"><span>Fortschritt</span><span id="qd-prog-lbl">0/8</span></div>
           <div class="prog-track"><div class="prog-fill" id="qd-prog-fill" style="width:0%"></div></div>
         </div>
+        <div style="margin-bottom:12px;" id="qd-check-badge-wrap"></div>
         <div class="qs" style="margin-bottom:12px;">
           <div class="qh">Abschluss</div>
           <div id="qd-completion-actions"></div>
@@ -1284,6 +1292,35 @@ function isQuestActiveForOverview(f){
   var p=questProgressValue(f);
   return f.status==='offen'||p>0;
 }
+function hasCheckBoolIssue(section){
+  if(!section||typeof section!=='object') return false;
+  return Object.keys(section).some(function(k){ return section[k]===false; });
+}
+function getCheckBadgeState(f){
+  var cr=f&&f.quest&&f.quest.checkResult;
+  if(!cr||typeof cr!=='object') return 'none';
+  var urteil=String(cr.urteil||'').toUpperCase();
+  var korr=Array.isArray(cr.korrekturen)?cr.korrekturen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var hasWarnUrteil=urteil.indexOf('KORREKTURBEDARF')!==-1||urteil.indexOf('NICHT VERWENDBAR')!==-1||urteil.indexOf('⚠')!==-1||urteil.indexOf('❌')!==-1;
+  var hasReadyUrteil=urteil.indexOf('BEREIT')!==-1||urteil.indexOf('VERSANDBEREIT')!==-1||urteil.indexOf('✅')!==-1;
+  var hasBoolWarn=hasCheckBoolIssue(cr.pflichtpruefung)||hasCheckBoolIssue(cr.faktencheck);
+  if(hasWarnUrteil||korr.length||hasBoolWarn) return 'warn';
+  if(hasReadyUrteil) return 'ok';
+  return 'none';
+}
+function getCheckBadgeHTML(f){
+  var state=getCheckBadgeState(f);
+  if(state==='warn') return '<span class=\"check-badge cb-warn\">⚠ Korrekturbedarf</span>';
+  if(state==='ok') return '<span class=\"check-badge cb-ok\">✅ Versandbereit</span>';
+  return '';
+}
+function renderQuestCheckBadge(f){
+  var wrap=document.getElementById('qd-check-badge-wrap');
+  if(!wrap) return;
+  var html=getCheckBadgeHTML(f);
+  wrap.innerHTML=html||'';
+  wrap.style.display=html?'block':'none';
+}
 
 function renderQuestOverview() {
   renderNextQuestWidget();
@@ -1299,9 +1336,11 @@ function renderQuestOverview() {
     var progress=questProgressValue(f);
     var phases=questPhases(f);
     var isAQ=String(f.id)===String(activeQuestFirmId);
+    var checkBadge=getCheckBadgeHTML(f);
     return '<div class="qcard'+(isAQ?' active-quest':'')+'" onclick="openQuestDetail(\''+f.id+'\')">' +
       '<div class="qc-head"><div class="qc-name">'+esc(f.name)+'</div><div class="qc-region">'+esc(f.region||'')+'</div></div>' +
       '<div class="qc-body">' +
+      (checkBadge?('<div style=\"margin-bottom:6px;\">'+checkBadge+'</div>'):'') +
       '<div class="phase-dots">' + ['I','II','III','IV'].map(function(p,i){
         return '<div class="pdot'+(phases[i]?' done':steps>(i*2)?' active':'')+'" title="Phase '+p+'">'+p+'</div>';
       }).join('') + '</div>' +
@@ -1356,6 +1395,7 @@ function updateProgress(f) {
   var p=questProgressValue(f);
   document.getElementById('qd-prog-lbl').textContent=fmtProgress(p)+' / 8 Fortschritt';
   document.getElementById('qd-prog-fill').style.width=Math.round((p/8)*100)+'%';
+  renderQuestCheckBadge(f);
   renderQuestCompletionActions(f);
 }
 
@@ -1774,6 +1814,7 @@ function genMarkdown(){
   var f=getFirm(activeQuestFirmId); if(!f) return;
   var b=f.quest.bausteine||{};
   var cfg=getCfg();
+  var cr=f.quest.checkResult;
   // Safe contact fallbacks
   var contact=f.quest.contact||{};
   var anrede=contact.anrede||'';
@@ -1790,8 +1831,24 @@ function genMarkdown(){
     ||(f.adresse?f.adresse.replace(/\\n/g,'\n'):'— Adresse noch nicht erfasst');
   // Ansprechpartner: prefer baustein, fall back to contact field
   var apDisplay=b.ansprechpartner||(contact.ansprechpartner||'— noch nicht bekannt');
+  var checkState=getCheckBadgeState(f);
+  var korr=cr&&Array.isArray(cr.korrekturen)?cr.korrekturen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var quellen=cr&&Array.isArray(cr.quellen)?cr.quellen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var reviewBlock='';
+  if(cr&&typeof cr==='object'){
+    if(checkState==='ok'){
+      reviewBlock='✅ Letzte Prüfung: versandbereit\n\n';
+    } else {
+      reviewBlock='## Überarbeitungshinweise vor Übernahme in Word\n\n'
+        +'**Urteil:** '+(cr.urteil||'—')+'\n\n'
+        +(korr.length?'**Korrekturen:**\n'+korr.map(function(k){return '- '+k;}).join('\n')+'\n\n':'')
+        +(cr.kurzbegruendung?'**Kurzbegründung:** '+cr.kurzbegruendung+'\n\n':'')
+        +(quellen.length?'**Quellen:**\n'+quellen.map(function(q){return '- '+q;}).join('\n')+'\n\n':'');
+    }
+  }
 
-  _mdText='# Bewerbung — '+f.name+'\n\n'
+  _mdText=reviewBlock
+    +'# Bewerbung — '+f.name+'\n\n'
     +'**Ansprechpartner:** '+apDisplay+'\n\n'
     +'**Adresse:**\n'+addrBlock+'\n\n'
     +'---\n\n'
