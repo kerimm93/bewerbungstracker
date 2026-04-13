@@ -586,6 +586,10 @@ textarea{resize:vertical;min-height:80px;}
           <div class="prog-lbl"><span>Fortschritt</span><span id="qd-prog-lbl">0/8</span></div>
           <div class="prog-track"><div class="prog-fill" id="qd-prog-fill" style="width:0%"></div></div>
         </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh">Abschluss</div>
+          <div id="qd-completion-actions"></div>
+        </div>
         <div id="qd-momentum"></div>
         <div class="qs" style="margin-bottom:12px;">
           <div class="qh">Ziel</div>
@@ -744,6 +748,7 @@ textarea{resize:vertical;min-height:80px;}
       <div class="qs">
         <div class="qh">☁ GitHub Gist Sync</div>
         <div class="notice">Token und Gist-ID werden nur lokal im Browser gespeichert — nie exportiert.</div>
+        <div style="font-size:12px;color:var(--ink-light);margin-bottom:8px;">Wird automatisch lokal gespeichert.</div>
         <label>GitHub Personal Access Token (nur Gist-Berechtigung)</label>
         <input type="password" id="gist-token" placeholder="ghp_…" oninput="saveGistCfg()"/>
         <label>Gist ID</label>
@@ -759,6 +764,7 @@ textarea{resize:vertical;min-height:80px;}
           <button class="btn btn-w btn-sm" onclick="gistMerge()">⊕ Merge</button>
           <div class="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-msg">Nicht konfiguriert</span></div>
         </div>
+        <div id="gist-cfg-saved" style="display:none;font-size:12px;color:var(--green);margin-top:8px;">Gist-Konfiguration lokal gespeichert ✓</div>
       </div>
 
       <!-- Export / Import -->
@@ -931,6 +937,7 @@ var popupFirmId = null;
 var openFirms = {};
 var openSteps = {};
 var gistAutoSyncTimer = null;
+var gistCfgSavedTimer = null;
 var _syncInProgress = false;
 var _rPrompt='', _cleanPrompt='', _track2Text='';
 
@@ -1265,12 +1272,24 @@ function questProgressValue(f){
 function fmtProgress(v){
   return (Math.round(v*100)%100===0)?String(Math.round(v)):v.toFixed(2).replace(/\.?0+$/,'');
 }
+function isQuestFullyCompleted(f){
+  if(!f||!f.quest) return false;
+  var doneAll=true;
+  for(var i=0;i<STEPS.length;i++){ if(!(f.quest.done&&f.quest.done[i])) { doneAll=false; break; } }
+  return doneAll||questProgressValue(f)>=8;
+}
+function isQuestActiveForOverview(f){
+  if(!f||!f.quest) return false;
+  if(isQuestFullyCompleted(f)) return false;
+  var p=questProgressValue(f);
+  return f.status==='offen'||p>0;
+}
 
 function renderQuestOverview() {
   renderNextQuestWidget();
   var wrap=document.getElementById('quest-overview');
   if(!wrap) return;
-  var active=S.firms.filter(function(f){return f.status==='offen'||Object.values(f.quest.done||{}).some(Boolean);});
+  var active=S.firms.filter(isQuestActiveForOverview);
   if(!active.length){
     wrap.innerHTML='<div class="es">Keine aktiven Quests.<br><br>Firmen in der Datenbank hinzufügen oder von der Karte starten.</div>';
     return;
@@ -1337,6 +1356,64 @@ function updateProgress(f) {
   var p=questProgressValue(f);
   document.getElementById('qd-prog-lbl').textContent=fmtProgress(p)+' / 8 Fortschritt';
   document.getElementById('qd-prog-fill').style.width=Math.round((p/8)*100)+'%';
+  renderQuestCompletionActions(f);
+}
+
+function renderQuestCompletionActions(f){
+  var box=document.getElementById('qd-completion-actions'); if(!box||!f) return;
+  var fullyDone=isQuestFullyCompleted(f);
+  if(fullyDone){
+    box.innerHTML='<div class="notice success" style="margin-bottom:8px;">Diese Bewerbung ist vollständig abgeschlossen.</div>'
+      +'<div class="arow"><button class="btn btn-w btn-sm" onclick="revertQuestCompletion()">↩ Abschluss zurücknehmen</button></div>';
+    return;
+  }
+  box.innerHTML='<div class="notice info" style="margin-bottom:8px;">Für Alt-/Importfälle: alle 8 Schritte auf erledigt setzen und aus aktiven Quests nehmen.</div>'
+    +'<div class="arow">'
+    +'<button class="btn btn-v btn-sm" onclick="completeQuestGlobally()">✅ Bewerbung komplett abschließen</button>'
+    +'</div>';
+}
+
+function completeQuestGlobally(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  if(!f.quest) f.quest=defaultQuest();
+  var prevStatus=f.status||'offen';
+  var hadDate=!!f.bewerbungsDatum;
+  f.quest._bulkCompletionBackup={
+    done:Object.assign({},f.quest.done||{}),
+    stepStatus:Object.assign({},f.quest.stepStatus||{}),
+    status:prevStatus,
+    hadDate:hadDate
+  };
+  for(var i=0;i<STEPS.length;i++){
+    f.quest.done[i]=true;
+    f.quest.stepStatus[i]='erledigt';
+  }
+  if(f.status==='offen') f.status='versendet';
+  if(!f.bewerbungsDatum) f.bewerbungsDatum=today();
+  updateStatusStrip(f); renderQuestSteps(f); updateProgress(f); updateMomentumModule(f); updateMobileBar(f);
+  save(); renderDB(); renderQuestOverview(); drawMap();
+  toast('Bewerbung komplett abgeschlossen ✓');
+}
+
+function revertQuestCompletion(){
+  var f=getFirm(activeQuestFirmId); if(!f||!f.quest) return;
+  var b=f.quest._bulkCompletionBackup;
+  if(b&&b.done&&b.stepStatus){
+    f.quest.done=Object.assign({},b.done);
+    f.quest.stepStatus=Object.assign({},b.stepStatus);
+    if(b.status) f.status=b.status;
+    if(!b.hadDate) f.bewerbungsDatum='';
+  } else {
+    for(var i=0;i<STEPS.length;i++){
+      f.quest.done[i]=false;
+      if((f.quest.stepStatus[i]||'offen')==='erledigt') f.quest.stepStatus[i]='geprüft';
+    }
+    if(f.status==='versendet') f.status='offen';
+  }
+  delete f.quest._bulkCompletionBackup;
+  updateStatusStrip(f); renderQuestSteps(f); updateProgress(f); updateMomentumModule(f); updateMobileBar(f);
+  save(); renderDB(); renderQuestOverview(); drawMap();
+  toast('Komplett-Abschluss zurückgenommen.');
 }
 
 function setStepDoneState(si,isDone){
@@ -1371,7 +1448,7 @@ function markEmailSent(){
 }
 
 function findNextMomentumFirm(curId){
-  var candidates=S.firms.filter(function(x){return x.status==='offen'&&String(x.id)!==String(curId)&&questProgressValue(x)<8;});
+  var candidates=S.firms.filter(function(x){return isQuestActiveForOverview(x)&&x.status==='offen'&&String(x.id)!==String(curId)&&!isQuestFullyCompleted(x);});
   if(!candidates.length) return null;
   var started=candidates.filter(function(x){
     return Object.keys(x.quest.stepStatus||{}).some(function(k){return x.quest.stepStatus[k]&&x.quest.stepStatus[k]!=='offen';});
@@ -1542,7 +1619,7 @@ function getNextStep(f) {
 function renderNextQuestWidget() {
   var wrap=document.getElementById('next-quest-widget'); if(!wrap) return;
   // Find the firm with the most progress that still has open steps
-  var candidates=S.firms.filter(function(f){return f.status==='offen'&&questProgressValue(f)<8;});
+  var candidates=S.firms.filter(function(f){return f.status==='offen'&&!isQuestFullyCompleted(f);});
   if(!candidates.length){wrap.innerHTML='';return;}
   // Sort: started first, then by weighted progress
   candidates.sort(function(a,b){
@@ -1574,7 +1651,7 @@ function goNextQuest() {
   var f=getFirm(activeQuestFirmId);
   if(f){var ns=getNextStep(f);if(ns){openSteps={};openSteps[ns.idx]=true;renderQuestSteps(f);toast('➤ '+STEPS[ns.idx].name);return;}}
   // Find next active firm
-  var candidates=S.firms.filter(function(x){return x.status==='offen'&&String(x.id)!==String(activeQuestFirmId);});
+  var candidates=S.firms.filter(function(x){return x.status==='offen'&&String(x.id)!==String(activeQuestFirmId)&&!isQuestFullyCompleted(x);});
   if(candidates.length){openQuestDetail(candidates[0].id);}
   else toast('Alle Quests bearbeitet!');
 }
@@ -2457,7 +2534,13 @@ function saveGistCfg(){
   var t=document.getElementById('gist-token'); if(t) localStorage.setItem(GIST_TOKEN_KEY,t.value);
   var i=document.getElementById('gist-id'); if(i) localStorage.setItem(GIST_ID_KEY,i.value);
   var a=document.getElementById('gist-auto'); if(a) localStorage.setItem(GIST_AUTO_KEY,a.checked?'1':'0');
-  setSyncStatus('', false, false);
+  setSyncStatus(gistGetToken()&&gistGetId()?'Konfiguriert':'Nicht konfiguriert',!!gistGetToken()&&!!gistGetId(),false);
+  var fb=document.getElementById('gist-cfg-saved');
+  if(fb){
+    fb.style.display='block';
+    if(gistCfgSavedTimer) clearTimeout(gistCfgSavedTimer);
+    gistCfgSavedTimer=setTimeout(function(){ fb.style.display='none'; gistCfgSavedTimer=null; },1600);
+  }
 }
 function loadGistCfgUI(){
   var t=document.getElementById('gist-token'); if(t) t.value=gistGetToken();
@@ -2734,7 +2817,7 @@ function gistApplyData(data, opts){
   persistLocalOnly();
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
-    if(currentTab==='settings') updateInfoPanel();
+    if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); }
   }
 }
 
@@ -2782,6 +2865,7 @@ loadCfgUI();
 gistStartupSync().finally(function(){
   seedIfEmpty();
   renderTabs();
+  loadGistCfgUI();
   renderDBRegionFilter();
   renderQuestOverview();
   setTimeout(function(){ drawMap(); }, 200);
