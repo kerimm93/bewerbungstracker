@@ -444,6 +444,16 @@ textarea{resize:vertical;min-height:80px;}
   padding:12px;font-size:12px;color:var(--ink);line-height:1.7;
   white-space:pre-wrap;font-family:monospace;margin-top:8px;max-height:300px;overflow-y:auto;
 }
+.pdf-draft-grid{display:flex;flex-direction:column;gap:10px;}
+.pdf-draft-item{display:flex;flex-direction:column;gap:4px;}
+.pdf-draft-label{font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;letter-spacing:.4px;}
+.pdf-draft-preview{
+  margin-top:10px;background:#fff;color:#111;border:1px solid #cfd4dc;border-radius:6px;
+  padding:16px;font-size:14px;line-height:1.55;font-family:Arial,Helvetica,sans-serif;
+}
+.pdf-draft-preview p{margin:0 0 12px;}
+.pdf-draft-preview .addr{white-space:normal;line-height:1.45;}
+.pdf-draft-preview .sign{margin-top:24px;}
 .check-badge{
   display:inline-flex;align-items:center;gap:6px;
   font-size:11px;font-weight:800;font-family:var(--body);
@@ -646,6 +656,34 @@ textarea{resize:vertical;min-height:80px;}
               <button class="btn btn-q btn-sm" onclick="copyMarkdown(this)" id="btn-copy-md" style="display:none;">Kopieren</button>
             </div>
             <div class="md-preview" id="md-preview" style="display:none;"></div>
+            <div class="dvd"></div>
+            <div class="qh" style="font-size:11px;margin-top:0;margin-bottom:8px;">🖨 Finale Anschreiben-Fassung</div>
+            <div class="notice info" style="margin-bottom:10px;">Diese Felder sind pro Quest speicherbar, vorbefüllt und vor dem Druck manuell editierbar.</div>
+            <div class="pdf-draft-grid">
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Datum</div>
+                <input id="pdfd-datum" type="text" placeholder="z. B. 15.04.2026" oninput="savePdfDraftField('datum')"/>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Adressblock</div>
+                <textarea id="pdfd-adressblock" rows="3" placeholder="Firmenname&#10;Straße&#10;PLZ Ort" oninput="savePdfDraftField('adressblock')"></textarea>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Anredezeile</div>
+                <input id="pdfd-anrede" type="text" placeholder="Sehr geehrte Damen und Herren," oninput="savePdfDraftField('anredezeile')"/>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Firmenspezifischer Satz</div>
+                <textarea id="pdfd-fsatz" rows="3" placeholder="Warum passt genau diese Firma?" oninput="savePdfDraftField('firmenspezifischerSatz')"></textarea>
+              </div>
+            </div>
+            <div class="arow" style="margin-top:10px;">
+              <button class="btn btn-t btn-sm" onclick="prefillPdfDraft(false)">Aus vorhandenen Daten vorbefüllen</button>
+              <button class="btn btn-q btn-sm" onclick="refreshPdfDraftPreview()">HTML-Vorschau aktualisieren</button>
+              <button class="btn btn-v btn-sm" onclick="openPdfPrintView()">Druckansicht / PDF öffnen</button>
+              <button class="btn btn-w btn-sm" onclick="prefillPdfDraft(true)">Felder zurück auf Vorschlagswerte setzen</button>
+            </div>
+            <div id="pdf-draft-preview" class="pdf-draft-preview"></div>
           </div>
         </div>
       </div>
@@ -906,6 +944,9 @@ var BAUSTEIN_LABELS = {
   firmenbezug:'Firmenbezug',notizen:'Sonstige Notizen'
 };
 var STEP_STATUSES = ['offen','begonnen','Rohentwurf','geprüft','erledigt'];
+function defaultPdfDraft(){
+  return { datum:'', adressblock:'', anredezeile:'', firmenspezifischerSatz:'' };
+}
 
 function defaultQuest() {
   return {
@@ -915,7 +956,8 @@ function defaultQuest() {
     checkResult:null,
     verdict:'',
     stepStatus:{},
-    bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}
+    bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''},
+    pdfDraft:defaultPdfDraft()
   };
 }
 function ensureQuestDefaults(q) {
@@ -930,6 +972,7 @@ function ensureQuestDefaults(q) {
   q.verdict = typeof q.verdict==='string' ? q.verdict : '';
   q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
   q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
+  q.pdfDraft = Object.assign(defaultPdfDraft(), (q.pdfDraft && typeof q.pdfDraft==='object') ? q.pdfDraft : {});
   Object.keys(q.returns).forEach(function(k){
     if(q.returns[k] && !q.rawReturns[k]) q.rawReturns[k]=q.returns[k];
   });
@@ -1034,6 +1077,13 @@ function isFirmDeleted(id){
 // ----------------------------------------------------------------
 function uid() { return String(Date.now()) + String(Math.random()).slice(2,8); }
 function today() { return new Date().toISOString().split('T')[0]; }
+function todayDe() {
+  var d=new Date();
+  var dd=String(d.getDate()).padStart(2,'0');
+  var mm=String(d.getMonth()+1).padStart(2,'0');
+  var yy=d.getFullYear();
+  return dd+'.'+mm+'.'+yy;
+}
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1780,6 +1830,7 @@ function renderBausteine(f) {
   // hide preview
   var prev=document.getElementById('md-preview');if(prev)prev.style.display='none';
   var cpBtn=document.getElementById('btn-copy-md');if(cpBtn)cpBtn.style.display='none';
+  renderPdfDraftSection(f);
 }
 
 function getBausteinPlaceholder(k){
@@ -1807,6 +1858,139 @@ function saveBaustein(fid, key) {
   var counter=document.getElementById('baustein-fill-count');
   if(counter){var filled=BAUSTEIN_KEYS.filter(function(k){return f.quest.bausteine[k]&&f.quest.bausteine[k].trim();}).length;counter.textContent=filled+'/'+BAUSTEIN_KEYS.length+' befüllt';}
   save();
+}
+
+function getPdfDraftPrefillValues(f){
+  var q=ensureQuestDefaults(f&&f.quest);
+  var b=q.bausteine||{};
+  var c=q.contact||{};
+  return {
+    datum:todayDe(),
+    adressblock:(b.adressblock&&b.adressblock.trim())||(c.adresse&&c.adresse.trim())||(f.adresse&&f.adresse.trim())||'',
+    anredezeile:(c.anrede&&c.anrede.trim())||(f.anrede&&f.anrede.trim())||'Sehr geehrte Damen und Herren,',
+    firmenspezifischerSatz:(b.motivationssatz&&b.motivationssatz.trim())||(f.anschreibenSatz&&f.anschreibenSatz.trim())||''
+  };
+}
+
+function prefillPdfDraft(forceOverwrite){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  f.quest=ensureQuestDefaults(f.quest);
+  var draft=f.quest.pdfDraft||defaultPdfDraft();
+  if(!draft._set||typeof draft._set!=='object') draft._set={};
+  var pre=getPdfDraftPrefillValues(f);
+  var changed=false;
+  ['datum','adressblock','anredezeile','firmenspezifischerSatz'].forEach(function(k){
+    if(forceOverwrite || !String(draft[k]||'').trim()){
+      draft[k]=pre[k]||'';
+      draft._set[k]=true;
+      changed=true;
+    }
+  });
+  f.quest.pdfDraft=draft;
+  if(changed) save();
+  renderPdfDraftSection(f);
+  toast(forceOverwrite?'Felder auf Vorschlagswerte gesetzt.':'Felder aus vorhandenen Daten vorbefüllt.');
+}
+
+function savePdfDraftField(key){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  f.quest=ensureQuestDefaults(f.quest);
+  if(!f.quest.pdfDraft) f.quest.pdfDraft=defaultPdfDraft();
+  if(!f.quest.pdfDraft._set||typeof f.quest.pdfDraft._set!=='object') f.quest.pdfDraft._set={};
+  var idMap={datum:'pdfd-datum',adressblock:'pdfd-adressblock',anredezeile:'pdfd-anrede',firmenspezifischerSatz:'pdfd-fsatz'};
+  var el=document.getElementById(idMap[key]); if(!el) return;
+  f.quest.pdfDraft[key]=String(el.value||'');
+  f.quest.pdfDraft._set[key]=true;
+  save();
+  refreshPdfDraftPreview();
+}
+
+function getFinalLetterModel(f){
+  var q=ensureQuestDefaults(f&&f.quest);
+  var pre=getPdfDraftPrefillValues(f);
+  var d=q.pdfDraft||defaultPdfDraft();
+  var setMap=(d._set&&typeof d._set==='object')?d._set:{};
+  function pickDraftValue(key){
+    if(setMap[key]) return String(d[key]||'');
+    if(d[key]===undefined||d[key]===null) return pre[key]||'';
+    if(String(d[key]).trim()!=='') return String(d[key]);
+    return pre[key]||'';
+  }
+  var cfg=getCfg();
+  return {
+    datum:pickDraftValue('datum').trim(),
+    adressblock:pickDraftValue('adressblock').trim(),
+    anredezeile:pickDraftValue('anredezeile').trim()||'Sehr geehrte Damen und Herren,',
+    firmenspezifischerSatz:pickDraftValue('firmenspezifischerSatz').trim(),
+    pflichtsatz:'Als Umschüler im Beruf zum '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung')+' mit IHK-Abschluss bei der '+(cfg.traeger||'IBB AG')+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+(cfg.von||'—')+' bis '+(cfg.bis||'—')+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte.',
+    neuorientierung:'Durch meine berufliche Neuorientierung bringe ich eine hohe Lernbereitschaft und belastbare Praxismotivation mit. Aus meinem bisherigen Werdegang in der Japanologie habe ich zudem die Fähigkeit mitgenommen, mich schnell und strukturiert in komplexe Themen einzuarbeiten.',
+    schlusssatz:'Über die Möglichkeit, mich und meine Motivation in einem persönlichen Gespräch vorzustellen, freue ich mich sehr.',
+    betreff:'Bewerbung um ein Pflichtpraktikum als '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung'),
+    name:(cfg.name||'—').trim()||'—'
+  };
+}
+
+function renderPdfDraftSection(f){
+  if(!f) return;
+  f.quest=ensureQuestDefaults(f.quest);
+  var d=f.quest.pdfDraft||defaultPdfDraft();
+  var setMap=(d._set&&typeof d._set==='object')?d._set:{};
+  var pre=getPdfDraftPrefillValues(f);
+  function fieldValue(key){
+    if(setMap[key]) return String(d[key]||'');
+    if(d[key]===undefined||d[key]===null) return pre[key]||'';
+    if(String(d[key]).trim()!=='') return String(d[key]);
+    return pre[key]||'';
+  }
+  var datumEl=document.getElementById('pdfd-datum'); if(datumEl) datumEl.value=fieldValue('datum');
+  var addrEl=document.getElementById('pdfd-adressblock'); if(addrEl) addrEl.value=fieldValue('adressblock');
+  var anrEl=document.getElementById('pdfd-anrede'); if(anrEl) anrEl.value=fieldValue('anredezeile');
+  var fsEl=document.getElementById('pdfd-fsatz'); if(fsEl) fsEl.value=fieldValue('firmenspezifischerSatz');
+  refreshPdfDraftPreview();
+}
+
+function refreshPdfDraftPreview(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var box=document.getElementById('pdf-draft-preview'); if(!box) return;
+  var m=getFinalLetterModel(f);
+  var addrHtml=esc(m.adressblock||'').replace(/\n/g,'<br>');
+  box.innerHTML=''
+    +'<p style="text-align:right;">'+esc(m.datum||'')+'</p>'
+    +'<p class="addr">'+(addrHtml||'&nbsp;')+'</p>'
+    +'<p>'+esc(m.anredezeile||'Sehr geehrte Damen und Herren,')+'</p>'
+    +'<p>'+esc(m.pflichtsatz)+'</p>'
+    +(m.firmenspezifischerSatz?'<p>'+esc(m.firmenspezifischerSatz)+'</p>':'')
+    +'<p>'+esc(m.neuorientierung)+'</p>'
+    +'<p>'+esc(m.schlusssatz)+'</p>'
+    +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p>';
+}
+
+function openPdfPrintView(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var m=getFinalLetterModel(f);
+  var w=window.open('','_blank');
+  if(!w){toast('Popup blockiert. Bitte Popups erlauben.');return;}
+  var addrHtml=esc(m.adressblock||'').replace(/\n/g,'<br>');
+  var firmSatzHtml=m.firmenspezifischerSatz?'<p>'+esc(m.firmenspezifischerSatz)+'</p>':'';
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>Anschreiben - '+esc(f.name||'Firma')+'</title>'
+    +'<style>@page{size:A4;margin:0;}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;}'
+    +'body{padding:14mm;} .page{width:210mm;min-height:297mm;display:flex;background:#fff;box-shadow:0 0 0 1px #d4d9e0 inset;}'
+    +'.side{width:34mm;background:#0f2238;} .main{flex:1;position:relative;background:#fff;padding:14mm 16mm 16mm;}'
+    +'.topline{position:absolute;top:0;left:0;right:0;height:6mm;background:#d7a13f;} .name{font-family:Georgia,\"Times New Roman\",serif;font-size:18pt;color:#10253d;font-weight:700;margin:10mm 0 4mm;}'
+    +'.date{text-align:right;font-size:11pt;color:#24384f;margin:2mm 0 9mm;} .addr{font-size:11pt;line-height:1.45;border-bottom:1px solid #cfd6df;padding-bottom:5mm;margin-bottom:6mm;}'
+    +'.subject{font-weight:700;color:#12395a;font-size:12pt;margin:0 0 6mm;} .body p{font-size:11.5pt;line-height:1.58;margin:0 0 4.6mm;} .sign{margin-top:8mm;}'
+    +'@media print{body{padding:0;} .page{box-shadow:none;}}</style></head><body>'
+    +'<div class="page"><div class="side"></div><main class="main"><div class="topline"></div>'
+    +'<div class="name">'+esc(m.name)+'</div>'
+    +'<p class="date">'+esc(m.datum||'')+'</p><p class="addr">'+(addrHtml||'&nbsp;')+'</p>'
+    +'<p class="subject">'+esc(m.betreff)+'</p><div class="body"><p>'+esc(m.anredezeile||'Sehr geehrte Damen und Herren,')+'</p><p>'+esc(m.pflichtsatz)+'</p>'
+    +firmSatzHtml
+    +'<p>'+esc(m.neuorientierung)+'</p><p>'+esc(m.schlusssatz)+'</p>'
+    +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p></div></main></div>'
+    +'<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>';
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 var _mdText='';
@@ -2675,6 +2859,17 @@ function mergeQuest(localQ, remoteQ){
   });
   q.bausteine = Object.assign({}, l.bausteine||{}, r.bausteine||{});
   BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
+  q.pdfDraft = defaultPdfDraft();
+  q.pdfDraft._set = Object.assign({}, (l.pdfDraft&&l.pdfDraft._set)||{}, (r.pdfDraft&&r.pdfDraft._set)||{});
+  ['datum','adressblock','anredezeile','firmenspezifischerSatz'].forEach(function(k){
+    var lSet=!!(l.pdfDraft&&l.pdfDraft._set&&l.pdfDraft._set[k]);
+    var rSet=!!(r.pdfDraft&&r.pdfDraft._set&&r.pdfDraft._set[k]);
+    if(rSet) q.pdfDraft[k]=String((r.pdfDraft&&r.pdfDraft[k])||'');
+    else if(lSet) q.pdfDraft[k]=String((l.pdfDraft&&l.pdfDraft[k])||'');
+    else if(r.pdfDraft&&r.pdfDraft[k]) q.pdfDraft[k]=r.pdfDraft[k];
+    else if(l.pdfDraft&&l.pdfDraft[k]) q.pdfDraft[k]=l.pdfDraft[k];
+    else q.pdfDraft[k]='';
+  });
   return ensureQuestDefaults(q);
 }
 
