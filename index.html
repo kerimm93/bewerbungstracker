@@ -842,6 +842,20 @@ textarea{resize:vertical;min-height:80px;}
         </div>
       </div>
 
+      <div class="qs">
+        <div class="qh">📄 Dokumenten-Templates</div>
+        <div class="notice">Lade lokale HTML-Templates (Anschreiben + Lebenslauf) und zugehörige Assets für den kombinierten Druck.</div>
+        <div class="arow" style="margin-bottom:8px;">
+          <button class="btn btn-q btn-sm" onclick="pickTemplateFiles()">Template-Dateien auswählen</button>
+          <button class="btn btn-s btn-sm" id="btn-pick-template-dir" onclick="pickTemplateDirectory()" style="display:none;">Template-Ordner auswählen</button>
+        </div>
+        <input id="template-file-input" type="file" multiple accept=".html,.htm,image/*" style="display:none;" onchange="onTemplateFilesSelected(this.files)"/>
+        <div class="notice" id="template-status">Anschreiben: nicht geladen · Lebenslauf: nicht geladen · Assets: keine</div>
+        <div class="arow" style="margin-top:8px;">
+          <button class="btn btn-m btn-sm" onclick="copyClaudeTemplatePrompt(this)">Claude-Prompt für Templates kopieren</button>
+        </div>
+      </div>
+
       <!-- Danger Zone -->
       <div class="qs" style="border-color:var(--red-dark);">
         <div class="qh" style="color:var(--red);">⚠ Gefahrenzone</div>
@@ -991,6 +1005,16 @@ var gistAutoSyncTimer = null;
 var gistCfgSavedTimer = null;
 var _syncInProgress = false;
 var _rPrompt='', _cleanPrompt='', _track2Text='';
+var TEMPLATE_RUNTIME = {
+  loaded:false,
+  fileNames:[],
+  files:{},
+  anschreibenHtml:'',
+  lebenslaufHtml:'',
+  assetUrls:{},
+  anschreibenFileName:'',
+  lebenslaufFileName:''
+};
 
 // ----------------------------------------------------------------
 // SAVE / LOAD
@@ -1965,14 +1989,10 @@ function refreshPdfDraftPreview(){
     +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p>';
 }
 
-function openPdfPrintView(){
-  var f=getFirm(activeQuestFirmId); if(!f) return;
-  var m=getFinalLetterModel(f);
-  var w=window.open('','_blank');
-  if(!w){toast('Popup blockiert. Bitte Popups erlauben.');return;}
+function getLegacyPdfPrintHtml(f,m){
   var addrHtml=esc(m.adressblock||'').replace(/\n/g,'<br>');
   var firmSatzHtml=m.firmenspezifischerSatz?'<p>'+esc(m.firmenspezifischerSatz)+'</p>':'';
-  var html='<!doctype html><html><head><meta charset="utf-8"><title>Anschreiben - '+esc(f.name||'Firma')+'</title>'
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Anschreiben - '+esc(f.name||'Firma')+'</title>'
     +'<style>@page{size:A4;margin:0;}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;}'
     +'body{padding:14mm;} .page{width:210mm;min-height:297mm;display:flex;background:#fff;box-shadow:0 0 0 1px #d4d9e0 inset;}'
     +'.side{width:34mm;background:#0f2238;} .main{flex:1;position:relative;background:#fff;padding:14mm 16mm 16mm;}'
@@ -1988,6 +2008,180 @@ function openPdfPrintView(){
     +'<p>'+esc(m.neuorientierung)+'</p><p>'+esc(m.schlusssatz)+'</p>'
     +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p></div></main></div>'
     +'<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>';
+}
+
+function getTemplateDisplayStatus(){
+  return 'Anschreiben: '+(TEMPLATE_RUNTIME.anschreibenHtml?'geladen ('+TEMPLATE_RUNTIME.anschreibenFileName+')':'nicht geladen')
+    +' · Lebenslauf: '+(TEMPLATE_RUNTIME.lebenslaufHtml?'geladen ('+TEMPLATE_RUNTIME.lebenslaufFileName+')':'nicht geladen')
+    +' · Assets: '+Object.keys(TEMPLATE_RUNTIME.assetUrls||{}).length;
+}
+
+function refreshTemplateStatus(){
+  var el=document.getElementById('template-status');
+  if(el) el.textContent=getTemplateDisplayStatus();
+}
+
+function normalizeTemplateBaseName(path){
+  return String(path||'').split(/[\\/]/).pop().trim().toLowerCase();
+}
+
+function isRelativeSrc(src){
+  var s=String(src||'').trim();
+  if(!s) return false;
+  return !/^(?:[a-z]+:|\/\/|#)/i.test(s);
+}
+
+function replaceTemplatePlaceholders(html,replacements){
+  var out=String(html||'');
+  Object.keys(replacements||{}).forEach(function(k){
+    out=out.split('{{'+k+'}}').join(replacements[k]||'');
+  });
+  return out;
+}
+
+function rewriteLocalAssetSources(html){
+  return String(html||'').replace(/src\s*=\s*(["'])([^"']+)\1/gi,function(all,quote,src){
+    var clean=String(src||'').trim();
+    if(!isRelativeSrc(clean)) return all;
+    var base=normalizeTemplateBaseName(clean);
+    var url=TEMPLATE_RUNTIME.assetUrls[base];
+    if(!url) return all;
+    return 'src='+quote+url+quote;
+  });
+}
+
+function parseTemplateDocument(html){
+  var parser=new DOMParser();
+  return parser.parseFromString(String(html||''),'text/html');
+}
+
+function collectTemplateHeadParts(doc){
+  var out={styles:[],links:[]};
+  if(!doc||!doc.head) return out;
+  var styleNodes=doc.head.querySelectorAll('style');
+  for(var i=0;i<styleNodes.length;i++){
+    out.styles.push(styleNodes[i].textContent||'');
+  }
+  var linkNodes=doc.head.querySelectorAll('link[rel="stylesheet"]');
+  for(var j=0;j<linkNodes.length;j++){
+    out.links.push(linkNodes[j].outerHTML);
+  }
+  return out;
+}
+
+function scopeCssSelectors(selectorText,scope){
+  return selectorText.split(',').map(function(rawSel){
+    var sel=String(rawSel||'').trim();
+    if(!sel) return '';
+    sel=sel
+      .replace(/\bhtml\b/gi,scope)
+      .replace(/\bbody\b/gi,scope)
+      .replace(/:root/gi,scope);
+    if(sel===scope) return scope;
+    if(sel.indexOf(scope)===0) return sel;
+    return scope+' '+sel;
+  }).filter(Boolean).join(', ');
+}
+
+function scopeCssText(cssText,scope){
+  var css=String(cssText||'');
+  var out='';
+  var i=0;
+  // Pragmatic scoping for typical template CSS. Very exotic CSS constructs may not be perfectly rewritten.
+  while(i<css.length){
+    var atIdx=css.indexOf('@',i);
+    var braceIdx=css.indexOf('{',i);
+    if(braceIdx===-1){ out+=css.slice(i); break; }
+    if(atIdx!==-1 && atIdx<braceIdx){
+      out+=css.slice(i,atIdx);
+      var atStart=atIdx;
+      var atHeadEnd=css.indexOf('{',atStart);
+      if(atHeadEnd===-1){ out+=css.slice(atStart); break; }
+      var atHead=css.slice(atStart,atHeadEnd).trim();
+      var depth=1, j=atHeadEnd+1;
+      while(j<css.length&&depth>0){
+        if(css[j]==='{') depth++;
+        else if(css[j]==='}') depth--;
+        j++;
+      }
+      var inner=css.slice(atHeadEnd+1,j-1);
+      if(/^@media\b/i.test(atHead)||/^@supports\b/i.test(atHead)){
+        out+=atHead+'{'+scopeCssText(inner,scope)+'}';
+      }else{
+        out+=css.slice(atStart,j);
+      }
+      i=j;
+      continue;
+    }
+    var selStart=i;
+    var open=braceIdx;
+    var close=open+1, d=1;
+    while(close<css.length&&d>0){
+      if(css[close]==='{') d++;
+      else if(css[close]==='}') d--;
+      close++;
+    }
+    var selectors=css.slice(selStart,open).trim();
+    var block=css.slice(open+1,close-1);
+    if(selectors){
+      out+=scopeCssSelectors(selectors,scope)+'{'+block+'}';
+    }
+    i=close;
+  }
+  return out;
+}
+
+function buildCombinedTemplateDocument(anschreibenHtml,lebenslaufHtml,title){
+  var aDoc=parseTemplateDocument(anschreibenHtml);
+  var lDoc=parseTemplateDocument(lebenslaufHtml);
+  var aHead=collectTemplateHeadParts(aDoc);
+  var lHead=collectTemplateHeadParts(lDoc);
+  var linkSeen={};
+  var links=[];
+  aHead.links.concat(lHead.links).forEach(function(linkHtml){
+    if(linkSeen[linkHtml]) return;
+    linkSeen[linkHtml]=true;
+    links.push(linkHtml);
+  });
+  var scopedStyles=''
+    +'<style>'+scopeCssText(aHead.styles.join('\n'),'.tpl-anschreiben')+'</style>'
+    +'<style>'+scopeCssText(lHead.styles.join('\n'),'.tpl-lebenslauf')+'</style>';
+  var aBody=(aDoc.body&&aDoc.body.innerHTML)?aDoc.body.innerHTML:String(anschreibenHtml||'');
+  var lBody=(lDoc.body&&lDoc.body.innerHTML)?lDoc.body.innerHTML:String(lebenslaufHtml||'');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title||'Bewerbung')+'</title>'
+    +links.join('')
+    +scopedStyles
+    +'<style>@page{size:A4;}html,body{margin:0;padding:0;background:#fff;} .page-break { break-before: page; page-break-before: always; }</style>'
+    +'</head><body><div class="tpl-anschreiben">'+aBody+'</div><div class="page-break"></div><div class="tpl-lebenslauf">'+lBody+'</div>'
+    +'<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>';
+}
+
+function buildTemplatePrintHtml(f,m){
+  var anschreiben=replaceTemplatePlaceholders(TEMPLATE_RUNTIME.anschreibenHtml,{
+    DATUM:esc(m.datum||''),
+    ADRESSBLOCK:esc(m.adressblock||'').replace(/\n/g,'<br>'),
+    ANREDEZEILE:esc(m.anredezeile||'Sehr geehrte Damen und Herren,'),
+    FIRMENSPEZIFISCHER_SATZ:esc(m.firmenspezifischerSatz||''),
+    NAME:esc(m.name||'')
+  });
+  var ortDatum=(m.datum||'').trim();
+  var lebenslauf=replaceTemplatePlaceholders(TEMPLATE_RUNTIME.lebenslaufHtml,{
+    DATUM:esc(m.datum||''),
+    ORT_DATUM:esc(ortDatum)
+  });
+  anschreiben=rewriteLocalAssetSources(anschreiben);
+  lebenslauf=rewriteLocalAssetSources(lebenslauf);
+  return buildCombinedTemplateDocument(anschreiben,lebenslauf,'Bewerbung - '+(f.name||'Firma'));
+}
+
+function openPdfPrintView(){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var m=getFinalLetterModel(f);
+  var w=window.open('','_blank');
+  if(!w){toast('Popup blockiert. Bitte Popups erlauben.');return;}
+  var html=(TEMPLATE_RUNTIME.loaded&&TEMPLATE_RUNTIME.anschreibenHtml&&TEMPLATE_RUNTIME.lebenslaufHtml)
+    ?buildTemplatePrintHtml(f,m)
+    :getLegacyPdfPrintHtml(f,m);
   w.document.open();
   w.document.write(html);
   w.document.close();
@@ -2721,6 +2915,9 @@ function loadCfgUI(){
   ['name','traeger','beruf','von','bis'].forEach(function(k){
     var el=document.getElementById('cfg-'+k);if(el)el.value=cfg[k]||'';
   });
+  var dirBtn=document.getElementById('btn-pick-template-dir');
+  if(dirBtn) dirBtn.style.display=window.showDirectoryPicker?'inline-flex':'none';
+  refreshTemplateStatus();
 }
 function updateInfoPanel(){
   function set(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
@@ -2747,6 +2944,91 @@ function genTrackingSel(){
   document.getElementById('btn-cp-track2').style.display='inline-flex';
 }
 function cpTrack2(btn){copyText(_track2Text,btn);}
+function resetTemplateRuntime(){
+  Object.keys(TEMPLATE_RUNTIME.assetUrls||{}).forEach(function(k){
+    try{ URL.revokeObjectURL(TEMPLATE_RUNTIME.assetUrls[k]); }catch(e){}
+  });
+  TEMPLATE_RUNTIME.loaded=false;
+  TEMPLATE_RUNTIME.fileNames=[];
+  TEMPLATE_RUNTIME.files={};
+  TEMPLATE_RUNTIME.anschreibenHtml='';
+  TEMPLATE_RUNTIME.lebenslaufHtml='';
+  TEMPLATE_RUNTIME.assetUrls={};
+  TEMPLATE_RUNTIME.anschreibenFileName='';
+  TEMPLATE_RUNTIME.lebenslaufFileName='';
+}
+function pickTemplateFiles(){
+  var fi=document.getElementById('template-file-input');
+  if(fi){ fi.value=''; fi.click(); }
+}
+async function pickTemplateDirectory(){
+  if(!window.showDirectoryPicker){toast('Ordnerauswahl wird hier nicht unterstützt.');return;}
+  try{
+    var dir=await window.showDirectoryPicker();
+    var files=[];
+    for await (var entry of dir.values()){
+      if(entry.kind!=='file') continue;
+      try{ files.push(await entry.getFile()); }catch(e){}
+    }
+    onTemplateFilesSelected(files);
+  }catch(e){
+    if(e&&e.name==='AbortError') return;
+    toast('Ordner konnte nicht geladen werden.');
+  }
+}
+async function onTemplateFilesSelected(fileList){
+  var files=Array.prototype.slice.call(fileList||[]);
+  if(!files.length){refreshTemplateStatus();return;}
+  resetTemplateRuntime();
+  TEMPLATE_RUNTIME.fileNames=files.map(function(f){return f.name;});
+  var htmlCandidates=[];
+  for(var i=0;i<files.length;i++){
+    var file=files[i];
+    var base=normalizeTemplateBaseName(file.name);
+    TEMPLATE_RUNTIME.files[base]=file;
+    if((file.type||'').indexOf('image/')===0 || /\.(png|jpe?g|gif|webp|svg)$/i.test(base)){
+      TEMPLATE_RUNTIME.assetUrls[base]=URL.createObjectURL(file);
+      continue;
+    }
+    if(/\.html?$/i.test(base)){
+      htmlCandidates.push({name:file.name,base:base,file:file});
+    }
+  }
+  var anschreibenCandidate=htmlCandidates.find(function(c){return c.base.indexOf('anschreiben')!==-1;})||htmlCandidates[0];
+  var lebenslaufCandidate=htmlCandidates.find(function(c){return c.base.indexOf('lebenslauf')!==-1;})||htmlCandidates.filter(function(c){return !anschreibenCandidate||c.base!==anschreibenCandidate.base;})[0];
+  if(anschreibenCandidate){
+    TEMPLATE_RUNTIME.anschreibenHtml=await anschreibenCandidate.file.text();
+    TEMPLATE_RUNTIME.anschreibenFileName=anschreibenCandidate.name;
+  }
+  if(lebenslaufCandidate){
+    TEMPLATE_RUNTIME.lebenslaufHtml=await lebenslaufCandidate.file.text();
+    TEMPLATE_RUNTIME.lebenslaufFileName=lebenslaufCandidate.name;
+  }
+  TEMPLATE_RUNTIME.loaded=!!(TEMPLATE_RUNTIME.anschreibenHtml&&TEMPLATE_RUNTIME.lebenslaufHtml);
+  refreshTemplateStatus();
+  toast(TEMPLATE_RUNTIME.loaded?'Templates geladen.':'Templates teilweise geladen.');
+}
+function getClaudeTemplatePrompt(){
+  return [
+    'Erstelle zwei getrennte, druckbare HTML-Templates (A4) für eine lokale Single-File-Webapp ohne Frameworks.',
+    '',
+    'Datei 1: anschreiben.html',
+    '- vollständiges HTML mit eingebettetem CSS',
+    '- nutze die Platzhalter: {{DATUM}}, {{ADRESSBLOCK}}, {{ANREDEZEILE}}, {{FIRMENSPEZIFISCHER_SATZ}}, {{NAME}}',
+    '',
+    'Datei 2: lebenslauf.html',
+    '- vollständiges HTML mit eingebettetem CSS',
+    '- optional nutze Platzhalter: {{DATUM}} und {{ORT_DATUM}}',
+    '',
+    'Wichtig:',
+    '- relative Assets wie bewerbungsfoto.jpg und unterschrift.png per src nutzen (keine externen URLs)',
+    '- ohne JavaScript-Abhängigkeiten, ohne externe Fonts/CDNs',
+    '- sauberes Print-Layout für Browser-Print/PDF.'
+  ].join('\n');
+}
+function copyClaudeTemplatePrompt(btn){
+  copyText(getClaudeTemplatePrompt(), btn||null);
+}
 function exportAll(){
   var data={version:6,exportDate:today(),cfg:S.cfg||{},regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{},_lastExported:S._lastExported};
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
