@@ -772,6 +772,36 @@ textarea{resize:vertical;min-height:80px;}
       </div>
     </div>
 
+    <!-- MAIL REVIEW -->
+    <div class="panel" id="panel-mail">
+      <div class="qs">
+        <div class="qh">📬 Mail-Abgleich</div>
+        <div class="notice">Erzeuge einen Prompt für Gemini/Deep Research, um Bewerbungs-Mails zu prüfen. Keine direkte Gmail-API in dieser Phase.</div>
+        <div class="notice info">Berücksichtigt werden nur Firmen, die nicht auf <strong>Absage</strong> oder <strong>Zusage</strong> stehen.</div>
+        <div class="arow" style="margin-top:8px;">
+          <button class="btn btn-q" onclick="copyMailReviewPrompt(this)">Mail-Abgleich-Prompt kopieren</button>
+        </div>
+      </div>
+      <div class="qs">
+        <div class="qh">📥 JSON-Import</div>
+        <label>Mail-Abgleich JSON</label>
+        <textarea id="mail-review-json" rows="8" placeholder='{"reviews":[{"firma":"...","mailboxStatus":"","latestMailDate":"","latestSummary":"","statusUpdate":"","nextSteps":[{"title":"","details":"","dueDate":"","priority":"","status":""}]}]}'></textarea>
+        <div class="arow" style="margin-top:8px;">
+          <button class="btn btn-v" onclick="importMailReviewJson()">Mail-Abgleich importieren</button>
+        </div>
+        <div class="notice success" id="mail-review-summary" style="display:none;margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- NEXT STEPS -->
+    <div class="panel" id="panel-next">
+      <div class="qs">
+        <div class="qh">➡ Nächste Schritte (global)</div>
+        <div class="notice">Alle offenen Aufgaben aus allen Bewerbungen. Erledigte Aufgaben werden hier ausgeblendet.</div>
+        <div id="next-steps-list"></div>
+      </div>
+    </div>
+
     <!-- SETTINGS -->
     <div class="panel" id="panel-settings">
 
@@ -1004,7 +1034,7 @@ var openSteps = {};
 var gistAutoSyncTimer = null;
 var gistCfgSavedTimer = null;
 var _syncInProgress = false;
-var _rPrompt='', _cleanPrompt='', _track2Text='';
+var _rPrompt='', _cleanPrompt='', _track2Text='', _mailReviewPrompt='';
 var TEMPLATE_RUNTIME = {
   loaded:false,
   fileNames:[],
@@ -1042,9 +1072,7 @@ function load() {
       if (!S.deletedIds || typeof S.deletedIds!=='object') S.deletedIds = {};
       if (!S._lastExported) S._lastExported = '';
       // Ensure all firms have quest objects with new fields
-      S.firms.forEach(function(f) {
-        f.quest = ensureQuestDefaults(f.quest);
-      });
+      S.firms = (S.firms||[]).map(function(f){ return ensureFirmDefaults(f); });
     }
   } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
 }
@@ -1058,8 +1086,42 @@ function newFirm(name) {
     status:'offen', bewerbungsDatum:'',
     adresse:'', email:'', ansprechpartner:'', anrede:'',
     anschreibenSatz:'', stichpunkte:'', eignungsurteil:'', notizen:'',
-    quest: defaultQuest()
+    quest: defaultQuest(),
+    mailReview: defaultMailReview(),
+    nextSteps: []
   };
+}
+function defaultMailReview() {
+  return {
+    lastCheckedAt:'',
+    latestMailDate:'',
+    latestSummary:'',
+    mailboxStatus:''
+  };
+}
+function defaultNextStep() {
+  return {
+    id:'',
+    title:'',
+    details:'',
+    source:'email',
+    sourceDate:'',
+    dueDate:'',
+    status:'offen',
+    priority:'normal',
+    createdAt:'',
+    updatedAt:''
+  };
+}
+function ensureFirmDefaults(f) {
+  var base = Object.assign(newFirm((f&&f.name)||''), f||{});
+  base.quest = ensureQuestDefaults(base.quest);
+  base.mailReview = Object.assign(defaultMailReview(), (base.mailReview&&typeof base.mailReview==='object') ? base.mailReview : {});
+  if(!Array.isArray(base.nextSteps)) base.nextSteps = [];
+  base.nextSteps = base.nextSteps.map(function(step){
+    return Object.assign(defaultNextStep(), (step&&typeof step==='object') ? step : {});
+  });
+  return base;
 }
 function normalizeFirmName(name) {
   if(!name) return '';
@@ -1153,6 +1215,8 @@ var TABS = [
   { id:'quest',    label:'⚔ Quests' },
   { id:'db',       label:'📋 Datenbank' },
   { id:'research', label:'🔭 Research' },
+  { id:'mail',     label:'📬 Mail' },
+  { id:'next',     label:'➡ Nächste Schritte' },
   { id:'settings', label:'⚙ Einstellungen' },
 ];
 var currentTab = 'map';
@@ -1178,6 +1242,8 @@ function switchTab(id) {
   if (id==='db') { renderDB(); renderDBRegionFilter(); }
   if (id==='quest') renderQuestOverview();
   if (id==='research') renderResearchChips();
+  if (id==='mail') renderMailPanel();
+  if (id==='next') renderNextStepsPanel();
   if (id==='settings') { loadCfgUI(); updateInfoPanel(); populateTrackFirmSel(); loadGistCfgUI(); }
 }
 
@@ -2264,8 +2330,8 @@ function runDirectIntake(){
     parsed.forEach(function(item){
       if(!item.name){skipped++;return;}
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);updated++;lines.push({name:item.name,action:'aktualisiert'});}
-      else{var nf=Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)});S.firms.push(nf);added++;lines.push({name:item.name,action:'neu'});}
+      if(ex){Object.assign(ex, ensureFirmDefaults(Object.assign({}, ex, item)));updated++;lines.push({name:item.name,action:'aktualisiert'});}
+      else{var nf=ensureFirmDefaults(Object.assign(newFirm(item.name),item));S.firms.push(nf);added++;lines.push({name:item.name,action:'neu'});}
     });
   } else {
     // Plain text: extract firm names heuristically (lines starting with capital, containing GmbH/AG/etc.)
@@ -2279,7 +2345,7 @@ function runDirectIntake(){
         name=name.replace(/[,;].*$/,'').trim();
         if(name.length<3||name.length>80) return;
         var ex=findByName(name);
-        if(ex){skipped++;}else{S.firms.push(newFirm(name));added++;lines.push({name:name,action:'neu'});}
+        if(ex){skipped++;}else{S.firms.push(ensureFirmDefaults(newFirm(name)));added++;lines.push({name:name,action:'neu'});}
       }
     });
   }
@@ -2831,8 +2897,8 @@ function doImport(){
     arr.forEach(function(item){
       if(!item.name) return;
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);upd++;}
-      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)}));add++;}
+      if(ex){Object.assign(ex, ensureFirmDefaults(Object.assign({}, ex, item)));upd++;}
+      else{S.firms.push(ensureFirmDefaults(Object.assign(newFirm(item.name),item)));add++;}
     });
     save();closeModal('import-modal');renderDB();drawMap();toast('Import: '+add+' neu, '+upd+' aktualisiert');
   }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
@@ -2884,12 +2950,215 @@ function importJSON(){
     arr.forEach(function(item){
       if(!item.name) return;
       var ex=findByName(item.name);
-      if(ex){Object.assign(ex,item);ex.quest=ensureQuestDefaults(ex.quest);upd++;}
-      else{S.firms.push(Object.assign(newFirm(item.name),item,{quest:ensureQuestDefaults(item.quest)}));add++;}
+      if(ex){Object.assign(ex, ensureFirmDefaults(Object.assign({}, ex, item)));upd++;}
+      else{S.firms.push(ensureFirmDefaults(Object.assign(newFirm(item.name),item)));add++;}
     });
     save();drawMap();document.getElementById('r-json').value='';
     toast('Importiert: '+add+' neu, '+upd+' aktualisiert');
   }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
+}
+
+function normalizeMailboxStatus(v){
+  var s=String(v||'').trim().toLowerCase();
+  var allowed=['offen','wartet_auf_antwort','antwort_erforderlich','termin','absage','zusage'];
+  return allowed.includes(s)?s:'';
+}
+function normalizeFirmStatus(v){
+  var s=String(v||'').trim().toLowerCase();
+  return ['offen','versendet','absage','zusage'].includes(s)?s:'';
+}
+function normalizeNextStepStatus(v){
+  var s=String(v||'').trim().toLowerCase();
+  return ['offen','in_arbeit','wartet','erledigt'].includes(s)?s:'offen';
+}
+function normalizeNextStepPriority(v){
+  var s=String(v||'').trim().toLowerCase();
+  return ['niedrig','normal','hoch'].includes(s)?s:'normal';
+}
+
+function generateMailReviewPrompt(){
+  var candidates=S.firms.filter(function(f){return f.status!=='absage'&&f.status!=='zusage';});
+  var listed=candidates.length?candidates.map(function(f,idx){
+    return (idx+1)+'. '+f.name+' | Status: '+(f.status||'offen')+' | Region: '+(f.region||'');
+  }).join('\n'):'(Keine offenen Firmen vorhanden)';
+  return 'Du bist ein E-Mail-Review-Assistent für Bewerbungen.\n'
+    +'Nutze den Gmail-/Mailbox-Kontext nur für die unten genannten Firmen.\n'
+    +'Prüfe pro Firma: relevante Bewerbungsmails, aktueller Mailbox-Status, letzte relevante Mail, erforderliche nächste Schritte.\n\n'
+    +'FIRMLISTE:\n'+listed+'\n\n'
+    +'WICHTIGE REGELN:\n'
+    +'- Gib AUSSCHLIESSLICH JSON aus, keine Erklärungen, kein Markdown.\n'
+    +'- Halluziniere nichts. Wenn unsicher: Feld leer lassen.\n'
+    +'- statusUpdate nur setzen, wenn aus Mails klar ableitbar.\n'
+    +'- nextSteps nur aus tatsächlich nötigen Handlungen ableiten.\n'
+    +'- Verwende mailboxStatus nur aus: offen | wartet_auf_antwort | antwort_erforderlich | termin | absage | zusage.\n'
+    +'- Verwende statusUpdate nur aus: offen | versendet | absage | zusage.\n'
+    +'- Verwende nextSteps[].priority nur aus: niedrig | normal | hoch.\n'
+    +'- Verwende nextSteps[].status nur aus: offen | in_arbeit | wartet | erledigt.\n\n'
+    +'- Verwende für latestMailDate und nextSteps[].dueDate ausschließlich YYYY-MM-DD. Wenn kein sicheres Datum aus dem Kontext hervorgeht, Feld leer lassen.\n\n'
+    +'JSON-SCHEMA (genau dieses Format):\n'
+    +'{\n'
+    +'  "reviews": [\n'
+    +'    {\n'
+    +'      "firma": "",\n'
+    +'      "mailboxStatus": "",\n'
+    +'      "latestMailDate": "",\n'
+    +'      "latestSummary": "",\n'
+    +'      "statusUpdate": "",\n'
+    +'      "nextSteps": [\n'
+    +'        {\n'
+    +'          "title": "",\n'
+    +'          "details": "",\n'
+    +'          "dueDate": "",\n'
+    +'          "priority": "",\n'
+    +'          "status": ""\n'
+    +'        }\n'
+    +'      ]\n'
+    +'    }\n'
+    +'  ]\n'
+    +'}';
+}
+function copyMailReviewPrompt(btn){
+  _mailReviewPrompt=generateMailReviewPrompt();
+  copyText(_mailReviewPrompt, btn);
+}
+function renderMailPanel(){
+  var el=document.getElementById('mail-review-summary');
+  if(el&&!el.textContent.trim()) el.style.display='none';
+}
+function importMailReviewJson(){
+  var raw=(document.getElementById('mail-review-json')||{value:''}).value.trim();
+  if(!raw){toast('Bitte Mail-Abgleich JSON einfügen.');return;}
+  try{
+    var data=extractJSON(raw);
+    var reviews=(data&&Array.isArray(data.reviews))?data.reviews:[];
+    if(!reviews.length) throw new Error('reviews fehlt oder leer');
+    var nowIso=new Date().toISOString();
+    var touched=0, skipped=0, tasks=0, statusUpdates=0;
+    reviews.forEach(function(rv){
+      var name=(rv&&rv.firma)||'';
+      var f=findByName(name);
+      if(!f){skipped++;return;}
+      f=Object.assign(f, ensureFirmDefaults(f));
+      var mailboxStatus=normalizeMailboxStatus(rv.mailboxStatus);
+      f.mailReview.lastCheckedAt=nowIso;
+      f.mailReview.latestMailDate=String(rv.latestMailDate||'').trim();
+      f.mailReview.latestSummary=String(rv.latestSummary||'').trim();
+      f.mailReview.mailboxStatus=mailboxStatus;
+      var st=normalizeFirmStatus(rv.statusUpdate);
+      if(st){ f.status=st; statusUpdates++; }
+      var keep=(f.nextSteps||[]).filter(function(step){ return step.source!=='email'; });
+      var incoming=Array.isArray(rv.nextSteps)?rv.nextSteps:[];
+      incoming.forEach(function(step){
+        var title=String((step&&step.title)||'').trim();
+        var details=String((step&&step.details)||'').trim();
+        if(!title&&!details) return;
+        keep.push(Object.assign(defaultNextStep(), {
+          id:uid(),
+          title:title,
+          details:details,
+          source:'email',
+          sourceDate:f.mailReview.latestMailDate||'',
+          dueDate:String((step&&step.dueDate)||'').trim(),
+          status:normalizeNextStepStatus(step&&step.status),
+          priority:normalizeNextStepPriority(step&&step.priority),
+          createdAt:nowIso,
+          updatedAt:nowIso
+        }));
+        tasks++;
+      });
+      f.nextSteps=keep;
+      touched++;
+    });
+    save();
+    renderDB();
+    renderQuestOverview();
+    renderNextStepsPanel();
+    var sum=document.getElementById('mail-review-summary');
+    if(sum){
+      sum.style.display='block';
+      sum.textContent='Mail-Abgleich: '+touched+' Firma(n) aktualisiert, '+tasks+' Email-Next-Step(s) gesetzt, '+statusUpdates+' Status-Update(s), '+skipped+' ohne Match.';
+    }
+    toast('Mail-Abgleich importiert');
+  }catch(e){ toast('Mail-JSON-Fehler: '+String(e.message||e).slice(0,70)); }
+}
+
+function getAllOpenNextSteps(){
+  var out=[];
+  S.firms.forEach(function(f){
+    f=ensureFirmDefaults(f);
+    (f.nextSteps||[]).forEach(function(step){
+      if((step.status||'offen')==='erledigt') return;
+      out.push({fid:f.id, firmName:f.name, firmStatus:f.status, mailReview:f.mailReview, step:step});
+    });
+  });
+  var prioOrder={hoch:0,normal:1,niedrig:2};
+  out.sort(function(a,b){
+    var ad=String(a.step.dueDate||'').trim(), bd=String(b.step.dueDate||'').trim();
+    if(!!ad!==!!bd) return ad?-1:1;
+    if(ad&&bd&&ad!==bd) return ad<bd?-1:1;
+    var ap=prioOrder[a.step.priority]!==undefined?prioOrder[a.step.priority]:1;
+    var bp=prioOrder[b.step.priority]!==undefined?prioOrder[b.step.priority]:1;
+    if(ap!==bp) return ap-bp;
+    return String(a.firmName||'').localeCompare(String(b.firmName||''),'de');
+  });
+  return out;
+}
+function getNextStepStartPrompt(fid, stepId){
+  var f=getFirm(fid); if(!f) return '';
+  f=ensureFirmDefaults(f);
+  var step=(f.nextSteps||[]).find(function(s){return String(s.id)===String(stepId);});
+  if(!step) return '';
+  return 'Kontext: Bewerbung bei '+(f.name||'')+'\n'
+    +'Aktueller Bewerbungsstatus: '+(f.status||'offen')+'\n'
+    +'Mailbox-Status: '+(f.mailReview.mailboxStatus||'')+'\n'
+    +'Letzte Mail-Zusammenfassung: '+(f.mailReview.latestSummary||'')+'\n'
+    +'Aufgabe: '+(step.title||'')+'\n'
+    +'Details: '+(step.details||'')+'\n'
+    +(step.dueDate?('Fällig bis: '+step.dueDate+'\n'):'')
+    +'\nArbeitsziel:\n'
+    +'Hilf mir, diese Aufgabe jetzt konkret umzusetzen (z. B. Antwortmail formulieren, Unterlagen nachreichen, Termin vorbereiten, Rückfrage beantworten oder Absprache dokumentieren). '
+    +'Gib mir eine klare, direkt nutzbare Erstfassung plus kurze To-do-Liste.';
+}
+function copyNextStepPrompt(fid, stepId, btn){
+  var p=getNextStepStartPrompt(fid, stepId);
+  if(!p){toast('Aufgabe nicht gefunden.');return;}
+  copyText(p, btn);
+}
+function markNextStepDone(fid, stepId){
+  var f=getFirm(fid); if(!f) return;
+  f=Object.assign(f, ensureFirmDefaults(f));
+  var step=(f.nextSteps||[]).find(function(s){return String(s.id)===String(stepId);});
+  if(!step) return;
+  step.status='erledigt';
+  step.updatedAt=new Date().toISOString();
+  save();
+  renderNextStepsPanel();
+  toast('Aufgabe erledigt ✓');
+}
+function renderNextStepsPanel(){
+  var box=document.getElementById('next-steps-list'); if(!box) return;
+  var rows=getAllOpenNextSteps();
+  if(!rows.length){
+    box.innerHTML='<div class="notice info">Keine offenen nächsten Schritte vorhanden.</div>';
+    return;
+  }
+  box.innerHTML=rows.map(function(row){
+    var st=row.step, mr=row.mailReview||{};
+    return '<div class="qs" style="margin-bottom:10px;">'
+      +'<div class="qh" style="font-size:12px;margin-bottom:8px;">'+esc(row.firmName)+'</div>'
+      +'<div class="notice" style="margin-bottom:8px;">'
+      +'<strong>'+esc(st.title||'Ohne Titel')+'</strong><br>'
+      +(st.details?esc(st.details).replace(/\n/g,'<br>')+'<br>':'')
+      +'Fällig: '+esc(st.dueDate||'—')+' · Priorität: '+esc(st.priority||'normal')+' · Status: '+esc(st.status||'offen')+'<br>'
+      +'Quelle: '+esc(st.source||'email')+(st.sourceDate?(' · Maildatum: '+esc(st.sourceDate)):'')
+      +(mr.mailboxStatus?('<br>Mailbox: '+esc(mr.mailboxStatus)):'')
+      +'</div>'
+      +'<div class="arow">'
+      +'<button class="btn btn-q btn-sm" onclick="copyNextStepPrompt(\''+esc(row.fid)+'\',\''+esc(st.id)+'\',this)">Startprompt kopieren</button>'
+      +'<button class="btn btn-v btn-sm" onclick="markNextStepDone(\''+esc(row.fid)+'\',\''+esc(st.id)+'\')">Als erledigt</button>'
+      +'</div>'
+      +'</div>';
+  }).join('');
 }
 
 // ================================================================
@@ -3155,10 +3424,26 @@ function mergeQuest(localQ, remoteQ){
   return ensureQuestDefaults(q);
 }
 
+function mergeMailReview(localMr, remoteMr){
+  var l=Object.assign(defaultMailReview(), (localMr&&typeof localMr==='object') ? localMr : {});
+  var r=Object.assign(defaultMailReview(), (remoteMr&&typeof remoteMr==='object') ? remoteMr : {});
+  function pickText(remoteVal, localVal){
+    var rv = (typeof remoteVal==='string') ? remoteVal.trim() : remoteVal;
+    var lv = (typeof localVal==='string') ? localVal.trim() : localVal;
+    return (rv!=='' && rv!==null && rv!==undefined) ? remoteVal
+      : (lv!=='' && lv!==null && lv!==undefined ? localVal : '');
+  }
+  return {
+    lastCheckedAt: pickBetterDate(l.lastCheckedAt, r.lastCheckedAt),
+    latestMailDate: pickBetterDate(l.latestMailDate, r.latestMailDate),
+    latestSummary: pickText(r.latestSummary, l.latestSummary),
+    mailboxStatus: pickText(r.mailboxStatus, l.mailboxStatus)
+  };
+}
+
 function mergeFirm(localFirm, remoteFirm){
-  var l=Object.assign(newFirm(localFirm&&localFirm.name), localFirm||{});
-  var r=Object.assign(newFirm(remoteFirm&&remoteFirm.name), remoteFirm||{});
-  l.quest=ensureQuestDefaults(l.quest); r.quest=ensureQuestDefaults(r.quest);
+  var l=ensureFirmDefaults(Object.assign(newFirm(localFirm&&localFirm.name), localFirm||{}));
+  var r=ensureFirmDefaults(Object.assign(newFirm(remoteFirm&&remoteFirm.name), remoteFirm||{}));
   var merged=Object.assign({}, l);
   function pickText(remoteVal, localVal){
     var rv = (typeof remoteVal==='string') ? remoteVal.trim() : remoteVal;
@@ -3182,7 +3467,22 @@ function mergeFirm(localFirm, remoteFirm){
   else if(ls===rs) merged.status=ls;
   else merged.status=rs||ls;
   merged.quest = mergeQuest(l.quest, r.quest);
-  return merged;
+  merged.mailReview = mergeMailReview(l.mailReview, r.mailReview);
+  var keepLocalNonEmail=(l.nextSteps||[]).filter(function(step){ return step.source!=='email'; });
+  var keepRemoteNonEmail=(r.nextSteps||[]).filter(function(step){ return step.source!=='email'; });
+  var mergedNonEmailById={};
+  keepLocalNonEmail.concat(keepRemoteNonEmail).forEach(function(step){
+    var s=Object.assign(defaultNextStep(), step||{});
+    var key=String(s.id||uid());
+    s.id=key;
+    mergedNonEmailById[key]=s;
+  });
+  var mergedEmail=(r.nextSteps||[]).filter(function(step){ return step.source==='email'; });
+  if(!mergedEmail.length) mergedEmail=(l.nextSteps||[]).filter(function(step){ return step.source==='email'; });
+  merged.nextSteps=Object.keys(mergedNonEmailById).map(function(k){ return mergedNonEmailById[k]; }).concat(mergedEmail.map(function(step){
+    return Object.assign(defaultNextStep(), step||{});
+  }));
+  return ensureFirmDefaults(merged);
 }
 
 function mergeSyncData(localData, remoteData){
@@ -3337,10 +3637,7 @@ function gistMerge(){
 
 function gistApplyData(data, opts){
   opts=opts||{};
-  if(data.firms) S.firms=data.firms.map(function(f){
-    f.quest=ensureQuestDefaults(f.quest);
-    return f;
-  });
+  if(data.firms) S.firms=data.firms.map(function(f){ return ensureFirmDefaults(f); });
   if(data.regions&&data.regions.length) S.regions=data.regions;
   if(data.cfg) S.cfg=data.cfg;
   if(data.deletedIds&&typeof data.deletedIds==='object') S.deletedIds=data.deletedIds;
