@@ -783,6 +783,23 @@ textarea{resize:vertical;min-height:80px;}
         </div>
       </div>
       <div class="qs">
+        <div class="qh">🧹 Bericht → JSON</div>
+        <div class="notice">Wenn Gemini zuerst einen langen Bericht liefert: hier einfügen, Bereinigungsprompt erzeugen, in ChatGPT/Claude nutzen und das JSON unten importieren.</div>
+        <label>Schritt 1 — Langer Bericht</label>
+        <textarea id="mail-clean-raw" rows="6" placeholder="Gemini/Deep-Research Bericht …"></textarea>
+        <div class="arow" style="margin-top:8px;">
+          <button class="btn btn-m" onclick="genMailCleanPrompt()">Bereinigungsprompt generieren</button>
+        </div>
+        <div id="mail-clean-wrap" style="display:none;margin-top:10px;">
+          <label>Schritt 2 — Prompt in ChatGPT / Claude einfügen</label>
+          <div class="pscr" id="mail-clean-prompt" style="max-height:220px;"></div>
+          <div class="arow" style="margin-top:8px;">
+            <button class="btn btn-m btn-sm" onclick="copyMailCleanPrompt(this)">Kopieren</button>
+            <a class="btn btn-w btn-sm" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>
+          </div>
+        </div>
+      </div>
+      <div class="qs">
         <div class="qh">📥 JSON-Import</div>
         <label>Mail-Abgleich JSON</label>
         <textarea id="mail-review-json" rows="8" placeholder='{"reviews":[{"firma":"...","mailboxStatus":"","latestMailDate":"","latestSummary":"","statusUpdate":"","nextSteps":[{"title":"","details":"","dueDate":"","priority":"","status":""}]}]}'></textarea>
@@ -1034,7 +1051,7 @@ var openSteps = {};
 var gistAutoSyncTimer = null;
 var gistCfgSavedTimer = null;
 var _syncInProgress = false;
-var _rPrompt='', _cleanPrompt='', _track2Text='', _mailReviewPrompt='';
+var _rPrompt='', _cleanPrompt='', _track2Text='', _mailReviewPrompt='', _mailCleanPrompt='';
 var TEMPLATE_RUNTIME = {
   loaded:false,
   fileNames:[],
@@ -2976,6 +2993,52 @@ function normalizeNextStepPriority(v){
   return ['niedrig','normal','hoch'].includes(s)?s:'normal';
 }
 
+function genMailCleanPrompt(){
+  var raw=(document.getElementById('mail-clean-raw')||{value:''}).value.trim();
+  if(!raw){toast('Bitte zuerst den langen Bericht einfügen.');return;}
+  _mailCleanPrompt='Wandle den folgenden Mail-/Deep-Research-Bericht in exakt ein JSON-Objekt nach diesem Schema um.\n'
+    +'Gib AUSSCHLIESSLICH JSON zurück. Keine Erklärungen. Kein Markdown. Keine Codeblöcke.\n'
+    +'Nicht halluzinieren. Wenn Angaben unsicher oder nicht belegt sind: leere Strings verwenden.\n'
+    +'Für latestMailDate und nextSteps[].dueDate nur YYYY-MM-DD verwenden; wenn unsicher: leer lassen.\n'
+    +'firma: exakter Firmenname aus dem Bericht.\n'
+    +'latestSummary: 1-2 knappe Sätze.\n'
+    +'nextSteps nur mit echten Handlungen füllen. Wenn nur Warten beschrieben ist, nextSteps leer lassen.\n'
+    +'mailboxStatus nur aus: offen | wartet_auf_antwort | antwort_erforderlich | termin | absage | zusage.\n'
+    +'statusUpdate nur aus: offen | versendet | absage | zusage.\n'
+    +'nextSteps[].priority nur aus: niedrig | normal | hoch.\n'
+    +'nextSteps[].status nur aus: offen | in_arbeit | wartet | erledigt.\n\n'
+    +'Schema (exakt einhalten):\n'
+    +'{\n'
+    +'"reviews": [\n'
+    +'{\n'
+    +'"firma": "",\n'
+    +'"mailboxStatus": "",\n'
+    +'"latestMailDate": "",\n'
+    +'"latestSummary": "",\n'
+    +'"statusUpdate": "",\n'
+    +'"nextSteps": [\n'
+    +'{\n'
+    +'"title": "",\n'
+    +'"details": "",\n'
+    +'"dueDate": "",\n'
+    +'"priority": "",\n'
+    +'"status": ""\n'
+    +'}\n'
+    +']\n'
+    +'}\n'
+    +']\n'
+    +'}\n\n'
+    +'Bericht:\n---\n'+raw+'\n---';
+  var box=document.getElementById('mail-clean-prompt');
+  if(box) box.textContent=_mailCleanPrompt;
+  var wrap=document.getElementById('mail-clean-wrap');
+  if(wrap) wrap.style.display='block';
+  toast('Bereinigungsprompt erstellt.');
+}
+function copyMailCleanPrompt(btn){
+  copyText(_mailCleanPrompt, btn);
+}
+
 function generateMailReviewPrompt(){
   var candidates=S.firms.filter(function(f){return f.status!=='absage'&&f.status!=='zusage';});
   var listed=candidates.length?candidates.map(function(f,idx){
@@ -3024,6 +3087,10 @@ function copyMailReviewPrompt(btn){
 function renderMailPanel(){
   var el=document.getElementById('mail-review-summary');
   if(el&&!el.textContent.trim()) el.style.display='none';
+  var wrap=document.getElementById('mail-clean-wrap');
+  if(wrap) wrap.style.display=_mailCleanPrompt?'block':'none';
+  var box=document.getElementById('mail-clean-prompt');
+  if(box&&_mailCleanPrompt) box.textContent=_mailCleanPrompt;
 }
 function importMailReviewJson(){
   var raw=(document.getElementById('mail-review-json')||{value:''}).value.trim();
