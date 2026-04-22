@@ -444,6 +444,14 @@ textarea{resize:vertical;min-height:80px;}
   padding:12px;font-size:12px;color:var(--ink);line-height:1.7;
   white-space:pre-wrap;font-family:monospace;margin-top:8px;max-height:300px;overflow-y:auto;
 }
+.chints{
+  background:rgba(0,0,0,.22);border:1px solid var(--border);border-radius:6px;
+  padding:10px 12px;font-size:12px;line-height:1.55;color:var(--ink);
+}
+.chints ul{margin:6px 0 0 18px;padding:0;}
+.chints li{margin:0 0 4px;}
+.chints-sec{margin-top:10px;}
+.chints-sec-title{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-light);}
 .pdf-draft-grid{display:flex;flex-direction:column;gap:10px;}
 .pdf-draft-item{display:flex;flex-direction:column;gap:4px;}
 .pdf-draft-label{font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;letter-spacing:.4px;}
@@ -650,12 +658,11 @@ textarea{resize:vertical;min-height:80px;}
             <div class="notice info" style="margin-bottom:12px;">Speichere hier vorbereitete Bausteine für das finale Anschreiben am PC. Jeder Baustein kann unterwegs in 2–5 Min. vorbereitet werden.</div>
             <div class="baustein-grid" id="baustein-grid"></div>
             <div class="dvd"></div>
-            <div class="qh" style="font-size:11px;margin-top:0;margin-bottom:8px;">📄 Markdown-Vorschau</div>
-            <div class="arow">
-              <button class="btn btn-t btn-sm" onclick="genMarkdown()">Vorschau generieren</button>
-              <button class="btn btn-q btn-sm" onclick="copyMarkdown(this)" id="btn-copy-md" style="display:none;">Kopieren</button>
+            <div class="qh" style="font-size:11px;margin-top:0;margin-bottom:8px;">🧾 Korrektur-Hinweise</div>
+            <div class="chints" id="correction-hints">Noch keine Anschreiben-Prüfung vorhanden.</div>
+            <div class="arow" style="margin-top:8px;">
+              <button class="btn btn-q btn-sm" onclick="copyCorrectionHints(this)" id="btn-copy-correction-hints" style="display:none;">Korrektur-Hinweise kopieren</button>
             </div>
-            <div class="md-preview" id="md-preview" style="display:none;"></div>
             <div class="dvd"></div>
             <div class="qh" style="font-size:11px;margin-top:0;margin-bottom:8px;">🖨 Finale Anschreiben-Fassung</div>
             <div class="notice info" style="margin-bottom:10px;">Diese Felder sind pro Quest speicherbar, vorbefüllt und vor dem Druck manuell editierbar.</div>
@@ -892,6 +899,7 @@ textarea{resize:vertical;min-height:80px;}
       <div class="qs">
         <div class="qh">📄 Dokumenten-Templates</div>
         <div class="notice">Lade lokale HTML-Templates (Anschreiben + Lebenslauf) und zugehörige Assets für den kombinierten Druck.</div>
+        <div class="notice">Für zuverlässige PDF-Ausgabe sollten lokale Templates selbst A4-tauglich sein (<code>@page size A4</code>, <code>width: 210mm</code>, <code>min-height: 297mm</code>).</div>
         <div class="arow" style="margin-bottom:8px;">
           <button class="btn btn-q btn-sm" onclick="pickTemplateFiles()">Template-Dateien auswählen</button>
           <button class="btn btn-s btn-sm" id="btn-pick-template-dir" onclick="pickTemplateDirectory()" style="display:none;">Template-Ordner auswählen</button>
@@ -1934,9 +1942,7 @@ function renderBausteine(f) {
       +'<textarea class="baustein-ta" id="bst-'+k+'" rows="2" placeholder="'+getBausteinPlaceholder(k)+'" oninput="saveBaustein(\''+f.id+'\',\''+k+'\')" >'+esc(val)+'</textarea>'
       +'</div>';
   }).join('');
-  // hide preview
-  var prev=document.getElementById('md-preview');if(prev)prev.style.display='none';
-  var cpBtn=document.getElementById('btn-copy-md');if(cpBtn)cpBtn.style.display='none';
+  renderCorrectionHints(f);
   renderPdfDraftSection(f);
 }
 
@@ -2234,8 +2240,11 @@ function buildCombinedTemplateDocument(anschreibenHtml,lebenslaufHtml,title){
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title||'Bewerbung')+'</title>'
     +links.join('')
     +scopedStyles
-    +'<style>@page{size:A4;}html,body{margin:0;padding:0;background:#fff;} .page-break { break-before: page; page-break-before: always; }</style>'
-    +'</head><body><div class="tpl-anschreiben">'+aBody+'</div><div class="page-break"></div><div class="tpl-lebenslauf">'+lBody+'</div>'
+    +'<style>@page{size:A4;margin:0;}html,body{margin:0;padding:0;background:#fff;}'
+    +'.print-doc-page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;box-sizing:border-box;}'
+    +'.page-break{break-before:page;page-break-before:always;}'
+    +'@media print{html,body{margin:0!important;padding:0!important;}.print-doc-page{margin:0 auto;}}</style>'
+    +'</head><body><div class="print-doc-page tpl-anschreiben">'+aBody+'</div><div class="page-break"></div><div class="print-doc-page tpl-lebenslauf">'+lBody+'</div>'
     +'<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>';
 }
 
@@ -2268,6 +2277,63 @@ function openPdfPrintView(){
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+function getCorrectionHintsText(f){
+  var cr=f&&f.quest&&f.quest.checkResult;
+  if(!cr||typeof cr!=='object') return '';
+  var state=getCheckBadgeState(f);
+  var lines=[];
+  if(state==='warn') lines.push('⚠ Korrekturbedarf');
+  else if(state==='ok') lines.push('✅ Versandbereit');
+  var korr=Array.isArray(cr.korrekturen)?cr.korrekturen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var quellen=Array.isArray(cr.quellen)?cr.quellen.filter(function(x){return !!x&&String(x).trim();}):[];
+  if(korr.length){
+    lines.push('');
+    lines.push('Korrekturen/Hinweise:');
+    korr.forEach(function(k){lines.push('- '+String(k).trim());});
+  }
+  if(quellen.length){
+    lines.push('');
+    lines.push('Quellen/Belege:');
+    quellen.forEach(function(q){lines.push('- '+String(q).trim());});
+  }
+  return lines.join('\n').trim();
+}
+
+function renderCorrectionHints(f){
+  var box=document.getElementById('correction-hints');
+  var btn=document.getElementById('btn-copy-correction-hints');
+  if(!box) return;
+  var cr=f&&f.quest&&f.quest.checkResult;
+  if(!cr||typeof cr!=='object'){
+    box.innerHTML='Noch keine Anschreiben-Prüfung vorhanden.';
+    if(btn) btn.style.display='none';
+    return;
+  }
+  var state=getCheckBadgeState(f);
+  var badge=(state==='warn')
+    ?'<span class="check-badge cb-warn">⚠ Korrekturbedarf</span>'
+    :(state==='ok'
+      ?'<span class="check-badge cb-ok">✅ Versandbereit</span>'
+      :'');
+  var korr=Array.isArray(cr.korrekturen)?cr.korrekturen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var quellen=Array.isArray(cr.quellen)?cr.quellen.filter(function(x){return !!x&&String(x).trim();}):[];
+  var korrHtml=korr.length
+    ?'<div class="chints-sec"><div class="chints-sec-title">Korrekturen / Hinweise</div><ul>'+korr.map(function(k){return '<li>'+esc(k)+'</li>';}).join('')+'</ul></div>'
+    :'<div class="chints-sec"><div class="chints-sec-title">Korrekturen / Hinweise</div><div class="notice" style="margin-top:6px;">Keine konkreten Hinweise hinterlegt.</div></div>';
+  var quellenHtml=quellen.length
+    ?'<div class="chints-sec"><div class="chints-sec-title">Quellen / Belege</div><ul>'+quellen.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ul></div>'
+    :'';
+  box.innerHTML=(badge?'<div style="margin-bottom:8px;">'+badge+'</div>':'')+korrHtml+quellenHtml;
+  if(btn) btn.style.display=getCorrectionHintsText(f)?'inline-flex':'none';
+}
+
+function copyCorrectionHints(btn){
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  var txt=getCorrectionHintsText(f);
+  if(!txt){toast('Keine Korrektur-Hinweise vorhanden.');return;}
+  copyText(txt,btn);
 }
 
 var _mdText='';
