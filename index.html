@@ -2230,7 +2230,10 @@ function isRelativeSrc(src){
 function replaceTemplatePlaceholders(html,replacements){
   var out=String(html||'');
   Object.keys(replacements||{}).forEach(function(k){
-    out=out.split('{{'+k+'}}').join(replacements[k]||'');
+    var escapedKey=String(k).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    var tokenPattern=new RegExp('\\{\\{\\s*'+escapedKey+'\\s*\\}\\}','g');
+    var value=replacements[k];
+    out=out.replace(tokenPattern,value===undefined||value===null?'':String(value));
   });
   return out;
 }
