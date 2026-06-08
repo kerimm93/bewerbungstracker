@@ -680,8 +680,24 @@ textarea{resize:vertical;min-height:80px;}
                 <input id="pdfd-anrede" type="text" placeholder="Sehr geehrte Damen und Herren," oninput="savePdfDraftField('anredezeile')"/>
               </div>
               <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Standard-Einleitung für diese Bewerbung</div>
+                <textarea id="pdfd-standard-einleitung" rows="4" placeholder="Ohne Override wird die globale Standard-Einleitung verwendet." oninput="savePdfDraftField('standardEinleitungOverride')"></textarea>
+              </div>
+              <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Firmenspezifischer Satz</div>
                 <textarea id="pdfd-fsatz" rows="3" placeholder="Warum passt genau diese Firma?" oninput="savePdfDraftField('firmenspezifischerSatz')"></textarea>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Standard-Motivation für diese Bewerbung</div>
+                <textarea id="pdfd-standard-motivation" rows="4" placeholder="Ohne Override wird die globale Standard-Motivation verwendet." oninput="savePdfDraftField('standardMotivationOverride')"></textarea>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Standard-Projekte für diese Bewerbung</div>
+                <textarea id="pdfd-standard-projekte" rows="4" placeholder="Ohne Override werden die globalen Standard-Projekte verwendet." oninput="savePdfDraftField('standardProjekteOverride')"></textarea>
+              </div>
+              <div class="pdf-draft-item">
+                <div class="pdf-draft-label">Standard-Schluss für diese Bewerbung</div>
+                <textarea id="pdfd-standard-schluss" rows="4" placeholder="Ohne Override wird der globale Standard-Schluss verwendet." oninput="savePdfDraftField('standardSchlussOverride')"></textarea>
               </div>
             </div>
             <div class="arow" style="margin-top:10px;">
@@ -842,6 +858,20 @@ textarea{resize:vertical;min-height:80px;}
           <button class="btn btn-v btn-sm" onclick="saveCfgConfirm()">Speichern</button>
           <span id="cfg-saved" style="font-size:12px;color:var(--green);display:none;">✓ Gespeichert</span>
         </div>
+      </div>
+
+      <!-- Standard-Anschreibenblöcke -->
+      <div class="qs">
+        <div class="qh">🧾 Standard-Anschreibenblöcke</div>
+        <div class="notice">Diese globalen Texte werden für Bewerbungen ohne eigenen Override verwendet. Ein bewusst leer gespeicherter Bewerbungs-Override bleibt leer.</div>
+        <label>Standard-Einleitung</label>
+        <textarea class="stinp" id="profile-standardEinleitung" rows="4" placeholder="Allgemeine Einleitung des Anschreibens …" oninput="saveProfileTextBlock('standardEinleitung')"></textarea>
+        <label>Standard-Motivation</label>
+        <textarea class="stinp" id="profile-standardMotivation" rows="4" placeholder="Allgemeiner Motivationstext …" oninput="saveProfileTextBlock('standardMotivation')"></textarea>
+        <label>Standard-Projekte</label>
+        <textarea class="stinp" id="profile-standardProjekte" rows="4" placeholder="Allgemeiner Projekt- oder Praxisteil …" oninput="saveProfileTextBlock('standardProjekte')"></textarea>
+        <label>Standard-Schluss</label>
+        <textarea class="stinp" id="profile-standardSchluss" rows="4" placeholder="Allgemeiner Schlussteil …" oninput="saveProfileTextBlock('standardSchluss')"></textarea>
       </div>
 
       <!-- GitHub Gist Sync -->
@@ -1014,7 +1044,12 @@ var BAUSTEIN_LABELS = {
 };
 var STEP_STATUSES = ['offen','begonnen','Rohentwurf','geprüft','erledigt'];
 function defaultPdfDraft(){
-  return { datum:'', adressblock:'', anredezeile:'', firmenspezifischerSatz:'' };
+  return {
+    datum:'', adressblock:'', anredezeile:'',
+    standardEinleitungOverride:'', firmenspezifischerSatz:'',
+    standardMotivationOverride:'', standardProjekteOverride:'', standardSchlussOverride:'',
+    _set:{}
+  };
 }
 
 function defaultQuest() {
@@ -1042,13 +1077,49 @@ function ensureQuestDefaults(q) {
   q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
   q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
   q.pdfDraft = Object.assign(defaultPdfDraft(), (q.pdfDraft && typeof q.pdfDraft==='object') ? q.pdfDraft : {});
+  q.pdfDraft._set = q.pdfDraft._set && typeof q.pdfDraft._set==='object' ? q.pdfDraft._set : {};
   Object.keys(q.returns).forEach(function(k){
     if(q.returns[k] && !q.rawReturns[k]) q.rawReturns[k]=q.returns[k];
   });
   return q;
 }
+function defaultProfileTextBlocks(){
+  return { standardEinleitung:'', standardMotivation:'', standardProjekte:'', standardSchluss:'' };
+}
+function ensureProfileTextBlocks(blocks){
+  return Object.assign(defaultProfileTextBlocks(), (blocks&&typeof blocks==='object')?blocks:{});
+}
+function getProfileTextBlocks(){
+  S.profileTextBlocks=ensureProfileTextBlocks(S.profileTextBlocks);
+  return S.profileTextBlocks;
+}
+function getDefaultLetterTextBlocks(){
+  var cfg=getCfg();
+  return {
+    standardEinleitung:'Als Umschüler im Beruf zum '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung')+' mit IHK-Abschluss bei der '+(cfg.traeger||'IBB AG')+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+(cfg.von||'—')+' bis '+(cfg.bis||'—')+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte.',
+    standardMotivation:'Durch meine berufliche Neuorientierung bringe ich eine hohe Lernbereitschaft und belastbare Praxismotivation mit. Aus meinem bisherigen Werdegang in der Japanologie habe ich zudem die Fähigkeit mitgenommen, mich schnell und strukturiert in komplexe Themen einzuarbeiten.',
+    standardProjekte:'',
+    standardSchluss:'Über die Möglichkeit, mich und meine Motivation in einem persönlichen Gespräch vorzustellen, freue ich mich sehr.'
+  };
+}
+function getEffectiveProfileTextBlocks(){
+  var profile=getProfileTextBlocks(), fallback=getDefaultLetterTextBlocks();
+  var effective=defaultProfileTextBlocks();
+  Object.keys(effective).forEach(function(k){
+    effective[k]=String(profile[k]||'').trim()!==''?String(profile[k]):String(fallback[k]||'');
+  });
+  return effective;
+}
+function mergeProfileTextBlocks(localBlocks, remoteBlocks){
+  var local=ensureProfileTextBlocks(localBlocks), remote=ensureProfileTextBlocks(remoteBlocks);
+  var merged=defaultProfileTextBlocks();
+  Object.keys(merged).forEach(function(k){
+    merged[k]=String(local[k]||'').trim()!==''?String(local[k]):String(remote[k]||'');
+  });
+  return merged;
+}
 function defaultS() {
-  return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{}, deletedIds:{}, _lastExported:'' };
+  return { version:6, firms:[], regions:[].concat(DEFAULT_REGIONS), cfg:{}, profileTextBlocks:defaultProfileTextBlocks(), deletedIds:{}, _lastExported:'' };
 }
 
 var S = defaultS();
@@ -1094,6 +1165,7 @@ function load() {
       S = Object.assign(defaultS(), p);
       if (!S.regions || !S.regions.length) S.regions = [].concat(DEFAULT_REGIONS);
       if (!S.cfg) S.cfg = {};
+      S.profileTextBlocks = ensureProfileTextBlocks(S.profileTextBlocks);
       if (!S.deletedIds || typeof S.deletedIds!=='object') S.deletedIds = {};
       if (!S._lastExported) S._lastExported = '';
       // Ensure all firms have quest objects with new fields
@@ -1977,11 +2049,16 @@ function getPdfDraftPrefillValues(f){
   var q=ensureQuestDefaults(f&&f.quest);
   var b=q.bausteine||{};
   var c=q.contact||{};
+  var profile=getEffectiveProfileTextBlocks();
   return {
     datum:todayDe(),
     adressblock:(b.adressblock&&b.adressblock.trim())||(c.adresse&&c.adresse.trim())||(f.adresse&&f.adresse.trim())||'',
     anredezeile:(c.anrede&&c.anrede.trim())||(f.anrede&&f.anrede.trim())||'Sehr geehrte Damen und Herren,',
-    firmenspezifischerSatz:(b.motivationssatz&&b.motivationssatz.trim())||(f.anschreibenSatz&&f.anschreibenSatz.trim())||''
+    firmenspezifischerSatz:(b.motivationssatz&&b.motivationssatz.trim())||(f.anschreibenSatz&&f.anschreibenSatz.trim())||'',
+    standardEinleitungOverride:profile.standardEinleitung,
+    standardMotivationOverride:profile.standardMotivation,
+    standardProjekteOverride:profile.standardProjekte,
+    standardSchlussOverride:profile.standardSchluss
   };
 }
 
@@ -1993,12 +2070,19 @@ function prefillPdfDraft(forceOverwrite){
   var pre=getPdfDraftPrefillValues(f);
   var changed=false;
   ['datum','adressblock','anredezeile','firmenspezifischerSatz'].forEach(function(k){
-    if(forceOverwrite || !String(draft[k]||'').trim()){
+    if(forceOverwrite || (!draft._set[k] && !String(draft[k]||'').trim())){
       draft[k]=pre[k]||'';
       draft._set[k]=true;
       changed=true;
     }
   });
+  if(forceOverwrite){
+    ['standardEinleitungOverride','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'].forEach(function(k){
+      if(draft._set[k] || draft[k]) changed=true;
+      draft[k]='';
+      delete draft._set[k];
+    });
+  }
   f.quest.pdfDraft=draft;
   if(changed) save();
   renderPdfDraftSection(f);
@@ -2010,7 +2094,12 @@ function savePdfDraftField(key){
   f.quest=ensureQuestDefaults(f.quest);
   if(!f.quest.pdfDraft) f.quest.pdfDraft=defaultPdfDraft();
   if(!f.quest.pdfDraft._set||typeof f.quest.pdfDraft._set!=='object') f.quest.pdfDraft._set={};
-  var idMap={datum:'pdfd-datum',adressblock:'pdfd-adressblock',anredezeile:'pdfd-anrede',firmenspezifischerSatz:'pdfd-fsatz'};
+  var idMap={
+    datum:'pdfd-datum', adressblock:'pdfd-adressblock', anredezeile:'pdfd-anrede',
+    standardEinleitungOverride:'pdfd-standard-einleitung', firmenspezifischerSatz:'pdfd-fsatz',
+    standardMotivationOverride:'pdfd-standard-motivation', standardProjekteOverride:'pdfd-standard-projekte',
+    standardSchlussOverride:'pdfd-standard-schluss'
+  };
   var el=document.getElementById(idMap[key]); if(!el) return;
   f.quest.pdfDraft[key]=String(el.value||'');
   f.quest.pdfDraft._set[key]=true;
@@ -2030,14 +2119,19 @@ function getFinalLetterModel(f){
     return pre[key]||'';
   }
   var cfg=getCfg();
+  var profile=getEffectiveProfileTextBlocks();
+  function pickTextBlock(overrideKey, profileKey){
+    return (setMap[overrideKey]?String(d[overrideKey]||''):String(profile[profileKey]||'')).trim();
+  }
   return {
     datum:pickDraftValue('datum').trim(),
     adressblock:pickDraftValue('adressblock').trim(),
     anredezeile:pickDraftValue('anredezeile').trim()||'Sehr geehrte Damen und Herren,',
+    standardEinleitung:pickTextBlock('standardEinleitungOverride','standardEinleitung'),
     firmenspezifischerSatz:pickDraftValue('firmenspezifischerSatz').trim(),
-    pflichtsatz:'Als Umschüler im Beruf zum '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung')+' mit IHK-Abschluss bei der '+(cfg.traeger||'IBB AG')+' ist auch ein unentgeltliches betriebliches Praktikum für den Zeitraum vom '+(cfg.von||'—')+' bis '+(cfg.bis||'—')+' vorgesehen, das ich sehr gerne bei Ihnen absolvieren möchte.',
-    neuorientierung:'Durch meine berufliche Neuorientierung bringe ich eine hohe Lernbereitschaft und belastbare Praxismotivation mit. Aus meinem bisherigen Werdegang in der Japanologie habe ich zudem die Fähigkeit mitgenommen, mich schnell und strukturiert in komplexe Themen einzuarbeiten.',
-    schlusssatz:'Über die Möglichkeit, mich und meine Motivation in einem persönlichen Gespräch vorzustellen, freue ich mich sehr.',
+    standardMotivation:pickTextBlock('standardMotivationOverride','standardMotivation'),
+    standardProjekte:pickTextBlock('standardProjekteOverride','standardProjekte'),
+    standardSchluss:pickTextBlock('standardSchlussOverride','standardSchluss'),
     betreff:'Bewerbung um ein Pflichtpraktikum als '+(cfg.beruf||'Fachinformatiker für Anwendungsentwicklung'),
     name:(cfg.name||'—').trim()||'—'
   };
@@ -2051,6 +2145,7 @@ function renderPdfDraftSection(f){
   var pre=getPdfDraftPrefillValues(f);
   function fieldValue(key){
     if(setMap[key]) return String(d[key]||'');
+    if(/Override$/.test(key)) return pre[key]||'';
     if(d[key]===undefined||d[key]===null) return pre[key]||'';
     if(String(d[key]).trim()!=='') return String(d[key]);
     return pre[key]||'';
@@ -2058,8 +2153,16 @@ function renderPdfDraftSection(f){
   var datumEl=document.getElementById('pdfd-datum'); if(datumEl) datumEl.value=fieldValue('datum');
   var addrEl=document.getElementById('pdfd-adressblock'); if(addrEl) addrEl.value=fieldValue('adressblock');
   var anrEl=document.getElementById('pdfd-anrede'); if(anrEl) anrEl.value=fieldValue('anredezeile');
+  var introEl=document.getElementById('pdfd-standard-einleitung'); if(introEl) introEl.value=fieldValue('standardEinleitungOverride');
   var fsEl=document.getElementById('pdfd-fsatz'); if(fsEl) fsEl.value=fieldValue('firmenspezifischerSatz');
+  var motivationEl=document.getElementById('pdfd-standard-motivation'); if(motivationEl) motivationEl.value=fieldValue('standardMotivationOverride');
+  var projectsEl=document.getElementById('pdfd-standard-projekte'); if(projectsEl) projectsEl.value=fieldValue('standardProjekteOverride');
+  var closeEl=document.getElementById('pdfd-standard-schluss'); if(closeEl) closeEl.value=fieldValue('standardSchlussOverride');
   refreshPdfDraftPreview();
+}
+
+function formatLetterText(value){
+  return esc(value||'').replace(/\n/g,'<br>');
 }
 
 function refreshPdfDraftPreview(){
@@ -2071,16 +2174,17 @@ function refreshPdfDraftPreview(){
     +'<p style="text-align:right;">'+esc(m.datum||'')+'</p>'
     +'<p class="addr">'+(addrHtml||'&nbsp;')+'</p>'
     +'<p>'+esc(m.anredezeile||'Sehr geehrte Damen und Herren,')+'</p>'
-    +'<p>'+esc(m.pflichtsatz)+'</p>'
-    +(m.firmenspezifischerSatz?'<p>'+esc(m.firmenspezifischerSatz)+'</p>':'')
-    +'<p>'+esc(m.neuorientierung)+'</p>'
-    +'<p>'+esc(m.schlusssatz)+'</p>'
+    +(m.standardEinleitung?'<p>'+formatLetterText(m.standardEinleitung)+'</p>':'')
+    +(m.firmenspezifischerSatz?'<p>'+formatLetterText(m.firmenspezifischerSatz)+'</p>':'')
+    +(m.standardMotivation?'<p>'+formatLetterText(m.standardMotivation)+'</p>':'')
+    +(m.standardProjekte?'<p>'+formatLetterText(m.standardProjekte)+'</p>':'')
+    +(m.standardSchluss?'<p>'+formatLetterText(m.standardSchluss)+'</p>':'')
     +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p>';
 }
 
 function getLegacyPdfPrintHtml(f,m){
   var addrHtml=esc(m.adressblock||'').replace(/\n/g,'<br>');
-  var firmSatzHtml=m.firmenspezifischerSatz?'<p>'+esc(m.firmenspezifischerSatz)+'</p>':'';
+  function optionalParagraph(value){ return value?'<p>'+formatLetterText(value)+'</p>':''; }
   return '<!doctype html><html><head><meta charset="utf-8"><title>Anschreiben - '+esc(f.name||'Firma')+'</title>'
     +'<style>@page{size:A4;margin:0;}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;}'
     +'body{padding:14mm;} .page{width:210mm;min-height:297mm;display:flex;background:#fff;box-shadow:0 0 0 1px #d4d9e0 inset;}'
@@ -2092,9 +2196,12 @@ function getLegacyPdfPrintHtml(f,m){
     +'<div class="page"><div class="side"></div><main class="main"><div class="topline"></div>'
     +'<div class="name">'+esc(m.name)+'</div>'
     +'<p class="date">'+esc(m.datum||'')+'</p><p class="addr">'+(addrHtml||'&nbsp;')+'</p>'
-    +'<p class="subject">'+esc(m.betreff)+'</p><div class="body"><p>'+esc(m.anredezeile||'Sehr geehrte Damen und Herren,')+'</p><p>'+esc(m.pflichtsatz)+'</p>'
-    +firmSatzHtml
-    +'<p>'+esc(m.neuorientierung)+'</p><p>'+esc(m.schlusssatz)+'</p>'
+    +'<p class="subject">'+esc(m.betreff)+'</p><div class="body"><p>'+esc(m.anredezeile||'Sehr geehrte Damen und Herren,')+'</p>'
+    +optionalParagraph(m.standardEinleitung)
+    +optionalParagraph(m.firmenspezifischerSatz)
+    +optionalParagraph(m.standardMotivation)
+    +optionalParagraph(m.standardProjekte)
+    +optionalParagraph(m.standardSchluss)
     +'<p class="sign">Mit freundlichen Grüßen<br>'+esc(m.name)+'</p></div></main></div>'
     +'<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>';
 }
@@ -2253,7 +2360,11 @@ function buildTemplatePrintHtml(f,m){
     DATUM:esc(m.datum||''),
     ADRESSBLOCK:esc(m.adressblock||'').replace(/\n/g,'<br>'),
     ANREDEZEILE:esc(m.anredezeile||'Sehr geehrte Damen und Herren,'),
-    FIRMENSPEZIFISCHER_SATZ:esc(m.firmenspezifischerSatz||''),
+    STANDARD_EINLEITUNG:formatLetterText(m.standardEinleitung),
+    FIRMENSPEZIFISCHER_SATZ:formatLetterText(m.firmenspezifischerSatz),
+    STANDARD_MOTIVATION:formatLetterText(m.standardMotivation),
+    STANDARD_PROJEKTE:formatLetterText(m.standardProjekte),
+    STANDARD_SCHLUSS:formatLetterText(m.standardSchluss),
     NAME:esc(m.name||'')
   });
   var ortDatum=(m.datum||'').trim();
@@ -2976,6 +3087,9 @@ function doImport(){
     // Accept full backup or bare array
     var arr=Array.isArray(parsed)?parsed:(parsed.firms||[]);
     if(!arr.length) throw new Error('Keine Firmen gefunden');
+    if(!Array.isArray(parsed)&&parsed.profileTextBlocks){
+      S.profileTextBlocks=mergeProfileTextBlocks(S.profileTextBlocks,parsed.profileTextBlocks);
+    }
     var add=0,upd=0;
     arr.forEach(function(item){
       if(!item.name) return;
@@ -3306,6 +3420,19 @@ function saveCfg(){
   });
   save();
 }
+function saveProfileTextBlock(key){
+  var defaults=defaultProfileTextBlocks();
+  if(!Object.prototype.hasOwnProperty.call(defaults,key)) return;
+  var el=document.getElementById('profile-'+key); if(!el) return;
+  getProfileTextBlocks()[key]=String(el.value||'');
+  save();
+}
+function loadProfileTextBlocksUI(){
+  var blocks=getProfileTextBlocks();
+  Object.keys(defaultProfileTextBlocks()).forEach(function(k){
+    var el=document.getElementById('profile-'+k); if(el) el.value=blocks[k]||'';
+  });
+}
 function saveCfgConfirm(){
   saveCfg();
   var el=document.getElementById('cfg-saved');el.style.display='inline';
@@ -3320,6 +3447,7 @@ function loadCfgUI(){
   var dirBtn=document.getElementById('btn-pick-template-dir');
   if(dirBtn) dirBtn.style.display=window.showDirectoryPicker?'inline-flex':'none';
   refreshTemplateStatus();
+  loadProfileTextBlocksUI();
 }
 function updateInfoPanel(){
   function set(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
@@ -3416,7 +3544,7 @@ function getClaudeTemplatePrompt(){
     '',
     'Datei 1: anschreiben.html',
     '- vollständiges HTML mit eingebettetem CSS',
-    '- nutze die Platzhalter: {{DATUM}}, {{ADRESSBLOCK}}, {{ANREDEZEILE}}, {{FIRMENSPEZIFISCHER_SATZ}}, {{NAME}}',
+    '- nutze die Platzhalter: {{DATUM}}, {{ADRESSBLOCK}}, {{ANREDEZEILE}}, {{STANDARD_EINLEITUNG}}, {{FIRMENSPEZIFISCHER_SATZ}}, {{STANDARD_MOTIVATION}}, {{STANDARD_PROJEKTE}}, {{STANDARD_SCHLUSS}}, {{NAME}}',
     '',
     'Datei 2: lebenslauf.html',
     '- vollständiges HTML mit eingebettetem CSS',
@@ -3432,7 +3560,7 @@ function copyClaudeTemplatePrompt(btn){
   copyText(getClaudeTemplatePrompt(), btn||null);
 }
 function exportAll(){
-  var data={version:6,exportDate:today(),cfg:S.cfg||{},regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{},_lastExported:S._lastExported};
+  var data={version:6,exportDate:today(),cfg:S.cfg||{},profileTextBlocks:getProfileTextBlocks(),regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{},_lastExported:S._lastExported};
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Quest_Backup_'+today()+'.json';a.click();
 }
@@ -3487,7 +3615,7 @@ function githubHeaders(token, includeContentType){
 }
 
 function gistBuildPayload(syncTs){
-  return {version:6,exported:syncTs,cfg:S.cfg||{},regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{}};
+  return {version:6,exported:syncTs,cfg:S.cfg||{},profileTextBlocks:getProfileTextBlocks(),regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{}};
 }
 
 function gistAutoSyncDebounced(){
@@ -3545,7 +3673,7 @@ function mergeQuest(localQ, remoteQ){
   BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
   q.pdfDraft = defaultPdfDraft();
   q.pdfDraft._set = Object.assign({}, (l.pdfDraft&&l.pdfDraft._set)||{}, (r.pdfDraft&&r.pdfDraft._set)||{});
-  ['datum','adressblock','anredezeile','firmenspezifischerSatz'].forEach(function(k){
+  ['datum','adressblock','anredezeile','standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'].forEach(function(k){
     var lSet=!!(l.pdfDraft&&l.pdfDraft._set&&l.pdfDraft._set[k]);
     var rSet=!!(r.pdfDraft&&r.pdfDraft._set&&r.pdfDraft._set[k]);
     if(rSet) q.pdfDraft[k]=String((r.pdfDraft&&r.pdfDraft[k])||'');
@@ -3619,9 +3747,9 @@ function mergeFirm(localFirm, remoteFirm){
 }
 
 function mergeSyncData(localData, remoteData){
-  var baseLocal={cfg:localData.cfg||{},regions:localData.regions||[],firms:localData.firms||[],deletedIds:localData.deletedIds||{}};
-  var baseRemote={cfg:remoteData.cfg||{},regions:remoteData.regions||[],firms:remoteData.firms||[],deletedIds:remoteData.deletedIds||{}};
-  var merged={cfg:Object.assign({},baseLocal.cfg,baseRemote.cfg),regions:(baseRemote.regions&&baseRemote.regions.length)?baseRemote.regions:baseLocal.regions,firms:[],deletedIds:Object.assign({},baseLocal.deletedIds,baseRemote.deletedIds)};
+  var baseLocal={cfg:localData.cfg||{},profileTextBlocks:localData.profileTextBlocks||{},regions:localData.regions||[],firms:localData.firms||[],deletedIds:localData.deletedIds||{}};
+  var baseRemote={cfg:remoteData.cfg||{},profileTextBlocks:remoteData.profileTextBlocks||{},regions:remoteData.regions||[],firms:remoteData.firms||[],deletedIds:remoteData.deletedIds||{}};
+  var merged={cfg:Object.assign({},baseLocal.cfg,baseRemote.cfg),profileTextBlocks:mergeProfileTextBlocks(baseLocal.profileTextBlocks,baseRemote.profileTextBlocks),regions:(baseRemote.regions&&baseRemote.regions.length)?baseRemote.regions:baseLocal.regions,firms:[],deletedIds:Object.assign({},baseLocal.deletedIds,baseRemote.deletedIds)};
   var map={};
   var idByNormName={};
   baseLocal.firms.forEach(function(f){
@@ -3720,13 +3848,13 @@ async function gistSync(opts){
       await gistPushPayload(token,id,localData,silent);
       return {pushed:true,reason:'push-new'};
     }
-    remoteData = remoteData || {version:6,exported:'',cfg:{},regions:[],firms:[],deletedIds:{}};
+    remoteData = remoteData || {version:6,exported:'',cfg:{},profileTextBlocks:{},regions:[],firms:[],deletedIds:{}};
     var localTime=S._lastExported||'';
     var remoteTime=remoteData.exported||'';
     var mergedData;
     try{ mergedData = mergeSyncData(localData, remoteData); }
     catch(e){ setSyncStatus('Merge-Fehler',false,false); throw new Error('Merge: '+e.message); }
-    var mergedPayload={version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds};
+    var mergedPayload={version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,profileTextBlocks:mergedData.profileTextBlocks,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds};
     var normalizedRemote=normalizePayloadForCompare(remoteData);
     var normalizedMerged=normalizePayloadForCompare(mergedPayload);
     var didChange = stableStringify(normalizePayloadForCompare(localData))!==stableStringify(normalizedMerged);
@@ -3773,6 +3901,8 @@ function gistApplyData(data, opts){
   if(data.firms) S.firms=data.firms.map(function(f){ return ensureFirmDefaults(f); });
   if(data.regions&&data.regions.length) S.regions=data.regions;
   if(data.cfg) S.cfg=data.cfg;
+  if(data.profileTextBlocks) S.profileTextBlocks=ensureProfileTextBlocks(data.profileTextBlocks);
+  else S.profileTextBlocks=ensureProfileTextBlocks(S.profileTextBlocks);
   if(data.deletedIds&&typeof data.deletedIds==='object') S.deletedIds=data.deletedIds;
   if(!S.deletedIds||typeof S.deletedIds!=='object') S.deletedIds={};
   S.firms = (S.firms||[]).filter(function(f){ return !isFirmDeleted(f.id); });
@@ -3781,7 +3911,7 @@ function gistApplyData(data, opts){
   persistLocalOnly();
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
-    if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); }
+    if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); loadProfileTextBlocksUI(); }
   }
 }
 
