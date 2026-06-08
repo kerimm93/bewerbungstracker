@@ -972,6 +972,13 @@ textarea{resize:vertical;min-height:80px;}
           <div class="info-row"><div class="info-k">Davon versendet</div><div class="info-v" id="info-sent">—</div></div>
           <div class="info-row"><div class="info-k">Regionen</div><div class="info-v" id="info-regions">—</div></div>
           <div class="info-row"><div class="info-k">Datengröße (localStorage)</div><div class="info-v" id="info-size">—</div></div>
+          <div class="info-row"><div class="info-k">Runtime-State-Größe</div><div class="info-v" id="info-runtime-size">—</div></div>
+          <div class="info-row"><div class="info-k">Letzter Speicherfehler</div><div class="info-v" id="info-storage-error">Kein Fehler in dieser Sitzung.</div></div>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="qh" style="font-size:15px;">Speicherstatus</div>
+          <div class="notice danger" id="storage-error-notice" style="display:none;margin-bottom:10px;">Letzter lokaler Speichervorgang ist fehlgeschlagen. Bitte Emergency-Backup exportieren, bevor du neu lädst.</div>
+          <button class="btn btn-d btn-sm" onclick="emergencyExport()">Emergency-Backup exportieren</button>
         </div>
       </div>
 
@@ -1130,6 +1137,9 @@ var openSteps = {};
 var gistAutoSyncTimer = null;
 var gistCfgSavedTimer = null;
 var _syncInProgress = false;
+var _lastPersistError = null;
+var _lastPersistPayloadSize = null;
+var _lastPersistFailedAt = '';
 var _rPrompt='', _cleanPrompt='', _track2Text='', _mailReviewPrompt='', _mailCleanPrompt='';
 var TEMPLATE_RUNTIME = {
   loaded:false,
@@ -1145,16 +1155,63 @@ var TEMPLATE_RUNTIME = {
 // ----------------------------------------------------------------
 // SAVE / LOAD
 // ----------------------------------------------------------------
+function getJsonSizeInfo(json) {
+  json=String(json||'');
+  var bytes;
+  try{bytes=new Blob([json]).size;}catch(e){bytes=json.length*2;}
+  return {chars:json.length,bytes:bytes,kb:bytes/1024,mb:bytes/(1024*1024)};
+}
+function formatJsonSize(info) {
+  if(!info) return '—';
+  return info.chars+' Zeichen · '+info.bytes+' Bytes · '+info.kb.toFixed(1)+' KB · '+info.mb.toFixed(3)+' MB';
+}
+function isQuotaExceededError(e) {
+  return !!e && (e.name==='QuotaExceededError' || e.name==='NS_ERROR_DOM_QUOTA_REACHED' || e.code===22 || e.code===1014);
+}
+function getStorageErrorLabel(e) {
+  if(isQuotaExceededError(e)) return 'Speicherlimit überschritten';
+  if(e && (e.name==='SecurityError' || e.name==='InvalidStateError')) return 'localStorage nicht verfügbar';
+  return 'Sonstiger Storage-Fehler';
+}
+function recordPersistError(e, sizeInfo) {
+  _lastPersistError={
+    label:getStorageErrorLabel(e),
+    name:e&&e.name?String(e.name):'Error',
+    message:e&&e.message?String(e.message):String(e||'Unbekannter Fehler')
+  };
+  _lastPersistPayloadSize=sizeInfo||null;
+  _lastPersistFailedAt=new Date().toISOString();
+  console.error('localStorage persist failed',e);
+  toast('Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000);
+  if(currentTab==='settings') updateInfoPanel();
+}
 function persistLocalOnly() {
   // Write to localStorage without touching _lastExported or triggering auto-sync.
   // Used after gistApplyData() to persist the gist-supplied timestamp unchanged.
-  try { localStorage.setItem(LS, JSON.stringify(S)); } catch(e) { toast('Speicherfehler: ' + e.message.slice(0,40)); }
+  var json, sizeInfo;
+  try{
+    json=JSON.stringify(S);
+    sizeInfo=getJsonSizeInfo(json);
+    localStorage.setItem(LS,json);
+    _lastPersistError=null;
+    _lastPersistPayloadSize=null;
+    _lastPersistFailedAt='';
+    return true;
+  }catch(e){
+    recordPersistError(e,sizeInfo||null);
+    return false;
+  }
 }
 
 function save() {
-  if(!_syncInProgress) S._lastExported = new Date().toISOString();
-  persistLocalOnly();
+  var previousLastExported=S._lastExported;
+  if(!_syncInProgress) S._lastExported=new Date().toISOString();
+  if(!persistLocalOnly()){
+    S._lastExported=previousLastExported;
+    return false;
+  }
   if(!_syncInProgress) gistAutoSyncDebounced();
+  return true;
 }
 
 function load() {
@@ -3421,7 +3478,7 @@ function saveCfg(){
     var el=document.getElementById('cfg-'+k);
     if(el&&el.value) S.cfg[k]=el.value;
   });
-  save();
+  return save();
 }
 function saveProfileTextBlock(key){
   var defaults=defaultProfileTextBlocks();
@@ -3437,7 +3494,7 @@ function loadProfileTextBlocksUI(){
   });
 }
 function saveCfgConfirm(){
-  saveCfg();
+  if(!saveCfg()) return;
   var el=document.getElementById('cfg-saved');el.style.display='inline';
   setTimeout(function(){el.style.display='none';},2000);
   toast('Einstellungen gespeichert.');
@@ -3457,7 +3514,24 @@ function updateInfoPanel(){
   set('info-firms',S.firms.length+' Einträge');
   set('info-sent',S.firms.filter(function(f){return['versendet','absage','zusage'].includes(f.status);}).length+' Firmen');
   set('info-regions',S.regions.length+' Regionen');
-  try{set('info-size',((localStorage.getItem(LS)||'').length/1024).toFixed(1)+' KB');}catch(e){set('info-size','—');}
+  try{
+    var stored=localStorage.getItem(LS)||'';
+    set('info-size',formatJsonSize(getJsonSizeInfo(stored)));
+  }catch(e){set('info-size',getStorageErrorLabel(e));}
+  try{set('info-runtime-size',formatJsonSize(getJsonSizeInfo(JSON.stringify(S))));}catch(e){set('info-runtime-size','Nicht serialisierbar');}
+  var errEl=document.getElementById('storage-error-notice');
+  var errText=document.getElementById('info-storage-error');
+  if(_lastPersistError){
+    var failedAt=_lastPersistFailedAt?new Date(_lastPersistFailedAt).toLocaleString('de-DE'):'';
+    var details=_lastPersistError.label+' ('+_lastPersistError.name+'): '+_lastPersistError.message;
+    if(_lastPersistPayloadSize) details+=' · Payload: '+formatJsonSize(_lastPersistPayloadSize);
+    if(failedAt) details+=' · '+failedAt;
+    if(errText) errText.textContent=details;
+    if(errEl) errEl.style.display='block';
+  }else{
+    if(errText) errText.textContent='Kein Fehler in dieser Sitzung.';
+    if(errEl) errEl.style.display='none';
+  }
 }
 function populateTrackFirmSel(){
   var sel=document.getElementById('track-firm-sel');if(!sel) return;
@@ -3562,10 +3636,38 @@ function getClaudeTemplatePrompt(){
 function copyClaudeTemplatePrompt(btn){
   copyText(getClaudeTemplatePrompt(), btn||null);
 }
+function downloadJson(data,fileName){
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a');
+  var url=URL.createObjectURL(blob);
+  a.href=url;a.download=fileName;a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);},0);
+  return blob;
+}
 function exportAll(){
   var data={version:6,exportDate:today(),cfg:S.cfg||{},profileTextBlocks:getProfileTextBlocks(),regions:S.regions,firms:S.firms,deletedIds:S.deletedIds||{},_lastExported:S._lastExported};
-  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Quest_Backup_'+today()+'.json';a.click();
+  downloadJson(data,'FIAE_Quest_Backup_'+today()+'.json');
+}
+function emergencyExport(){
+  var runtimeJson='';
+  try{runtimeJson=JSON.stringify(S);}catch(e){}
+  var reason=_lastPersistError?_lastPersistError.label+': '+_lastPersistError.message:'Manuell ausgelöster Emergency-Export';
+  var data={
+    version:6,
+    exportDate:today(),
+    emergency:true,
+    emergencyReason:reason,
+    runtimePayloadSize:formatJsonSize(getJsonSizeInfo(runtimeJson)),
+    cfg:S.cfg||{},
+    profileTextBlocks:getProfileTextBlocks(),
+    regions:S.regions,
+    firms:S.firms,
+    deletedIds:S.deletedIds||{},
+    _lastExported:S._lastExported
+  };
+  var blob=downloadJson(data,'FIAE_Quest_EMERGENCY_Backup_'+today()+'.json');
+  toast('Emergency-Backup aus aktuellem Runtime-State exportiert.',5000);
+  return blob;
 }
 function resetAllQuests(){
   if(!confirm('Alle Quest-Fortschritte löschen? Firmendaten bleiben erhalten.')) return;
