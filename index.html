@@ -966,12 +966,14 @@ textarea{resize:vertical;min-height:80px;}
         <div class="qh">ℹ App-Info</div>
         <div class="info-grid">
           <div class="info-row"><div class="info-k">Version</div><div class="info-v">v6.0</div></div>
-          <div class="info-row"><div class="info-k">Storage Key</div><div class="info-v">fiae_quest_v6</div></div>
+          <div class="info-row"><div class="info-k">Storage Key</div><div class="info-v">fiae_quest_v6 (Legacy-Fallback)</div></div>
           <div class="info-row"><div class="info-k">Gist-Datei</div><div class="info-v">fiae_quest_data.json</div></div>
           <div class="info-row"><div class="info-k">Firmen gespeichert</div><div class="info-v" id="info-firms">—</div></div>
           <div class="info-row"><div class="info-k">Davon versendet</div><div class="info-v" id="info-sent">—</div></div>
           <div class="info-row"><div class="info-k">Regionen</div><div class="info-v" id="info-regions">—</div></div>
-          <div class="info-row"><div class="info-k">Datengröße (localStorage)</div><div class="info-v" id="info-size">—</div></div>
+          <div class="info-row"><div class="info-k">IndexedDB</div><div class="info-v" id="info-idb-status">—</div></div>
+          <div class="info-row"><div class="info-k">Migrationsstatus</div><div class="info-v" id="info-migration-status">—</div></div>
+          <div class="info-row"><div class="info-k">localStorage-Legacy-Größe</div><div class="info-v" id="info-size">—</div></div>
           <div class="info-row"><div class="info-k">Runtime-State-Größe</div><div class="info-v" id="info-runtime-size">—</div></div>
           <div class="info-row"><div class="info-k">Letzter Speicherfehler</div><div class="info-v" id="info-storage-error">Kein Fehler in dieser Sitzung.</div></div>
         </div>
@@ -1028,6 +1030,12 @@ textarea{resize:vertical;min-height:80px;}
 // STATE & STORAGE
 // ================================================================
 var LS = 'fiae_quest_v6';
+var IDB_DB_NAME = 'fiae_quest_db';
+var IDB_DB_VERSION = 1;
+var IDB_STORE_NAME = 'appState';
+var IDB_STATE_KEY = 'state';
+var IDB_MIGRATED_KEY = 'fiae_quest_v6_idb_migrated';
+var LS_EMERGENCY = 'fiae_quest_v6_emergency';
 var GIST_TOKEN_KEY = 'fiae_quest_gist_token';
 var GIST_ID_KEY    = 'fiae_quest_gist_id';
 var GIST_AUTO_KEY  = 'fiae_quest_gist_auto';
@@ -1155,6 +1163,13 @@ var TEMPLATE_RUNTIME = {
 // ----------------------------------------------------------------
 // SAVE / LOAD
 // ----------------------------------------------------------------
+var _dbPromise = null;
+var _dbWriteQueue = Promise.resolve();
+var _idbAvailable = false;
+var _idbLastError = null;
+var _loadedFromIndexedDB = false;
+var _migrationStatus = 'nicht geprüft';
+
 function getJsonSizeInfo(json) {
   json=String(json||'');
   var bytes;
@@ -1170,8 +1185,110 @@ function isQuotaExceededError(e) {
 }
 function getStorageErrorLabel(e) {
   if(isQuotaExceededError(e)) return 'Speicherlimit überschritten';
-  if(e && (e.name==='SecurityError' || e.name==='InvalidStateError')) return 'localStorage nicht verfügbar';
+  if(e && (e.name==='SecurityError' || e.name==='InvalidStateError')) return 'Storage nicht verfügbar';
   return 'Sonstiger Storage-Fehler';
+}
+function normalizeState(rawState) {
+  var next=Object.assign(defaultS(), (rawState&&typeof rawState==='object')?rawState:{});
+  if(!next.regions || !next.regions.length) next.regions=[].concat(DEFAULT_REGIONS);
+  if(!next.cfg) next.cfg={};
+  next.profileTextBlocks=ensureProfileTextBlocks(next.profileTextBlocks);
+  if(!next.deletedIds || typeof next.deletedIds!=='object') next.deletedIds={};
+  if(!next._lastExported) next._lastExported='';
+  next.firms=(next.firms||[]).map(function(f){ return ensureFirmDefaults(f); });
+  return next;
+}
+function readLegacyLocalState() {
+  var raw=localStorage.getItem(LS);
+  if(!raw) return null;
+  return normalizeState(JSON.parse(raw.replace(/^\uFEFF/,'')));
+}
+function openDB() {
+  if(_dbPromise) return _dbPromise;
+  _dbPromise=new Promise(function(resolve,reject){
+    if(!window.indexedDB){
+      var unavailable=new Error('IndexedDB nicht verfügbar');
+      _idbAvailable=false; _idbLastError=unavailable;
+      reject(unavailable); return;
+    }
+    var req=window.indexedDB.open(IDB_DB_NAME, IDB_DB_VERSION);
+    req.onupgradeneeded=function(ev){
+      var db=ev.target.result;
+      if(!db.objectStoreNames.contains(IDB_STORE_NAME)) db.createObjectStore(IDB_STORE_NAME);
+    };
+    req.onsuccess=function(ev){ _idbAvailable=true; _idbLastError=null; resolve(ev.target.result); };
+    req.onerror=function(){ _idbAvailable=false; _idbLastError=req.error||new Error('IndexedDB open failed'); reject(_idbLastError); };
+    req.onblocked=function(){ console.warn('IndexedDB open blocked'); };
+  }).catch(function(e){ _dbPromise=null; throw e; });
+  return _dbPromise;
+}
+function idbGet(key) {
+  return openDB().then(function(db){
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction(IDB_STORE_NAME,'readonly');
+      var store=tx.objectStore(IDB_STORE_NAME);
+      var req=store.get(key);
+      req.onsuccess=function(){ resolve(req.result); };
+      req.onerror=function(){ reject(req.error||new Error('IndexedDB get failed')); };
+      tx.onerror=function(){ reject(tx.error||new Error('IndexedDB transaction failed')); };
+    });
+  });
+}
+function idbSet(key, value) {
+  _dbWriteQueue=_dbWriteQueue.catch(function(){}).then(function(){
+    return openDB().then(function(db){
+      return new Promise(function(resolve,reject){
+        var tx=db.transaction(IDB_STORE_NAME,'readwrite');
+        var store=tx.objectStore(IDB_STORE_NAME);
+        var req=store.put(value,key);
+        req.onerror=function(){ reject(req.error||new Error('IndexedDB put failed')); };
+        tx.oncomplete=function(){ resolve(true); };
+        tx.onerror=function(){ reject(tx.error||new Error('IndexedDB transaction failed')); };
+        tx.onabort=function(){ reject(tx.error||new Error('IndexedDB transaction aborted')); };
+      });
+    });
+  });
+  return _dbWriteQueue;
+}
+function idbDelete(key) {
+  _dbWriteQueue=_dbWriteQueue.catch(function(){}).then(function(){
+    return openDB().then(function(db){
+      return new Promise(function(resolve,reject){
+        var tx=db.transaction(IDB_STORE_NAME,'readwrite');
+        var store=tx.objectStore(IDB_STORE_NAME);
+        var req=store.delete(key);
+        req.onerror=function(){ reject(req.error||new Error('IndexedDB delete failed')); };
+        tx.oncomplete=function(){ resolve(true); };
+        tx.onerror=function(){ reject(tx.error||new Error('IndexedDB transaction failed')); };
+        tx.onabort=function(){ reject(tx.error||new Error('IndexedDB transaction aborted')); };
+      });
+    });
+  });
+  return _dbWriteQueue;
+}
+async function migrateFromLocalStorageToIndexedDB() {
+  try{
+    await openDB();
+    var existing=await idbGet(IDB_STATE_KEY);
+    if(existing){
+      var marker=false;
+      try{ marker=localStorage.getItem(IDB_MIGRATED_KEY)==='1'; }catch(markerReadError){}
+      _migrationStatus=marker?'migriert':'IndexedDB vorhanden';
+      return false;
+    }
+    var legacy=readLegacyLocalState();
+    if(!legacy){ _migrationStatus='kein Legacy-State'; return false; }
+    await idbSet(IDB_STATE_KEY, legacy);
+    try{ localStorage.setItem(IDB_MIGRATED_KEY,'1'); }catch(markerError){ console.warn('Migration marker could not be written',markerError); }
+    _migrationStatus='migriert';
+    console.info('Legacy localStorage state migrated to IndexedDB. Legacy key retained as fallback.');
+    return true;
+  }catch(e){
+    _migrationStatus='Legacy-Fallback';
+    _idbLastError=e;
+    console.warn('IndexedDB migration failed; legacy localStorage fallback remains available.',e);
+    return false;
+  }
 }
 function recordPersistError(e, sizeInfo) {
   _lastPersistError={
@@ -1181,32 +1298,35 @@ function recordPersistError(e, sizeInfo) {
   };
   _lastPersistPayloadSize=sizeInfo||null;
   _lastPersistFailedAt=new Date().toISOString();
-  console.error('localStorage persist failed',e);
+  console.error('IndexedDB persist failed',e);
   toast('Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000);
   if(currentTab==='settings') updateInfoPanel();
 }
-function persistLocalOnly() {
-  // Write to localStorage without touching _lastExported or triggering auto-sync.
-  // Used after gistApplyData() to persist the gist-supplied timestamp unchanged.
+async function persistLocalOnly() {
+  // Write the large runtime state to IndexedDB only. Legacy localStorage remains a fallback/backup.
   var json, sizeInfo;
   try{
     json=JSON.stringify(S);
     sizeInfo=getJsonSizeInfo(json);
-    localStorage.setItem(LS,json);
+    await idbSet(IDB_STATE_KEY, normalizeState(JSON.parse(json)));
+    try{ localStorage.setItem(IDB_MIGRATED_KEY,'1'); }catch(markerError){ console.warn('Migration marker could not be written',markerError); }
+    _idbAvailable=true; _idbLastError=null; _loadedFromIndexedDB=true; _migrationStatus='migriert';
     _lastPersistError=null;
     _lastPersistPayloadSize=null;
     _lastPersistFailedAt='';
     return true;
   }catch(e){
+    _idbLastError=e;
     recordPersistError(e,sizeInfo||null);
+    try{ if(json) localStorage.setItem(LS_EMERGENCY,json); }catch(emergencyError){ console.warn('Emergency localStorage write failed',emergencyError); }
     return false;
   }
 }
 
-function save() {
+async function save() {
   var previousLastExported=S._lastExported;
   if(!_syncInProgress) S._lastExported=new Date().toISOString();
-  if(!persistLocalOnly()){
+  if(!await persistLocalOnly()){
     S._lastExported=previousLastExported;
     return false;
   }
@@ -1214,21 +1334,22 @@ function save() {
   return true;
 }
 
-function load() {
-  try {
-    var raw = localStorage.getItem(LS);
-    if (raw) {
-      var p = JSON.parse(raw.replace(/^\uFEFF/,''));
-      S = Object.assign(defaultS(), p);
-      if (!S.regions || !S.regions.length) S.regions = [].concat(DEFAULT_REGIONS);
-      if (!S.cfg) S.cfg = {};
-      S.profileTextBlocks = ensureProfileTextBlocks(S.profileTextBlocks);
-      if (!S.deletedIds || typeof S.deletedIds!=='object') S.deletedIds = {};
-      if (!S._lastExported) S._lastExported = '';
-      // Ensure all firms have quest objects with new fields
-      S.firms = (S.firms||[]).map(function(f){ return ensureFirmDefaults(f); });
+async function load() {
+  _loadedFromIndexedDB=false;
+  try{ await openDB(); }
+  catch(openError){ _idbAvailable=false; _idbLastError=openError; _migrationStatus='Legacy-Fallback'; console.warn('IndexedDB unavailable; loading legacy localStorage fallback.',openError); }
+  if(_idbAvailable) await migrateFromLocalStorageToIndexedDB();
+  try{
+    if(_idbAvailable){
+      var idbState=await idbGet(IDB_STATE_KEY);
+      if(idbState){ S=normalizeState(idbState); _loadedFromIndexedDB=true; if(_migrationStatus!=='migriert') _migrationStatus='IndexedDB vorhanden'; return; }
     }
-  } catch(e) { toast('Ladefehler: ' + e.message.slice(0,40)); S = defaultS(); }
+  }catch(idbReadError){ _idbLastError=idbReadError; _migrationStatus='Legacy-Fallback'; console.warn('IndexedDB load failed; falling back to localStorage.',idbReadError); }
+  try{
+    var legacy=readLegacyLocalState();
+    S=legacy||defaultS();
+    if(legacy) _migrationStatus='Legacy-Fallback';
+  }catch(e){ toast('Ladefehler: '+String(e.message||e).slice(0,40)); S=defaultS(); }
 }
 
 // ----------------------------------------------------------------
@@ -1542,12 +1663,13 @@ function closePopup() { document.getElementById('map-popup').classList.remove('v
 function openQuestFromMap() { if(!popupFirmId) return; closePopup(); activeQuestFirmId=popupFirmId; openQuestDetail(popupFirmId); switchTab('quest'); }
 
 function openRegionModal() { openModal('region-modal'); }
-function addRegion() {
+async function addRegion() {
   var name=document.getElementById('rg-name').value.trim();
   var short=document.getElementById('rg-short').value.trim().toUpperCase();
   if(!name||!short){toast('Name und Kürzel erforderlich.');return;}
   S.regions.push({id:name.toLowerCase().replace(/\s/g,'_'),name:name,short:short,x:.5+Math.random()*.2-.1,y:.5+Math.random()*.2-.1});
-  save(); closeModal('region-modal'); drawMap(); renderDBRegionFilter(); toast('Region hinzugefügt: '+name);
+  if(!await save()) return;
+  closeModal('region-modal'); drawMap(); renderDBRegionFilter(); toast('Region hinzugefügt: '+name);
 }
 
 // ================================================================
@@ -1816,7 +1938,7 @@ function jumpToMomentumQuest(){
   openQuestDetail(next.id);
   toast('Weiter mit '+next.name+' ⚡');
 }
-function saveQuestToDB() {
+async function saveQuestToDB() {
   var f=getFirm(activeQuestFirmId); if(!f) return;
   var q=f.quest;
   if(q.verdict) f.eignungsurteil=q.verdict;
@@ -1825,7 +1947,8 @@ function saveQuestToDB() {
   if(q.contact.email) f.email=q.contact.email;
   if(q.contact.adresse) f.adresse=q.contact.adresse;
   if(q.extracted[2]) f.stichpunkte=q.extracted[2];
-  save(); toast('In DB gespeichert: '+f.name);
+  if(!await save()) return;
+  toast('In DB gespeichert: '+f.name);
 }
 
 // ================================================================
@@ -2741,7 +2864,7 @@ function genCleanPromptForStep(si) {
 // ----------------------------------------------------------------
 // RAW SAVE (Stage 1)
 // ----------------------------------------------------------------
-function saveRaw(si) {
+async function saveRaw(si) {
   var f=getFirm(activeQuestFirmId); if(!f) return;
   var ta=document.getElementById('sr-raw-'+si); if(!ta) return;
   var raw=ta.value.trim(); if(!raw){toast('Nichts eingefügt!');return;}
@@ -2751,7 +2874,8 @@ function saveRaw(si) {
   if((f.quest.stepStatus[si]||'offen')==='offen') f.quest.stepStatus[si]='begonnen';
   var badge=document.querySelector('#ss-'+si+' .sstatus');
   if(badge){var st=f.quest.stepStatus[si];badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
-  save(); toast('Rohergebnis gespeichert ✓');
+  if(!await save()) return;
+  toast('Rohergebnis gespeichert ✓');
   var cleanBtn=document.getElementById('btn-clean-'+si);
   if(cleanBtn){
     cleanBtn.disabled=false;
@@ -3140,7 +3264,7 @@ function exportCSV(){
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FIAE_Firmen_'+today()+'.csv';a.click();
 }
 function openImport(){ openModal('import-modal'); }
-function doImport(){
+async function doImport(){
   var raw=document.getElementById('import-ta').value.trim();
   try{
     var parsed=JSON.parse(raw.replace(/^\uFEFF/,''));
@@ -3157,7 +3281,8 @@ function doImport(){
       if(ex){Object.assign(ex, ensureFirmDefaults(Object.assign({}, ex, item)));upd++;}
       else{S.firms.push(ensureFirmDefaults(Object.assign(newFirm(item.name),item)));add++;}
     });
-    save();closeModal('import-modal');renderDB();drawMap();toast('Import: '+add+' neu, '+upd+' aktualisiert');
+    if(!await save()){ toast('Import übernommen, aber Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000); return; }
+    closeModal('import-modal');renderDB();drawMap();toast('Import: '+add+' neu, '+upd+' aktualisiert');
   }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
 }
 
@@ -3197,7 +3322,7 @@ function genClean(){
   document.getElementById('r-jw').style.display='block';
 }
 function cpClean(btn){copyText(_cleanPrompt,btn);}
-function importJSON(){
+async function importJSON(){
   var raw=document.getElementById('r-json').value.trim();
   try{
     var m=raw.match(/```json\s*([\s\S]*?)```/)||raw.match(/```\s*(\[[\s\S]*?\])\s*```/)||[null,raw];
@@ -3210,7 +3335,8 @@ function importJSON(){
       if(ex){Object.assign(ex, ensureFirmDefaults(Object.assign({}, ex, item)));upd++;}
       else{S.firms.push(ensureFirmDefaults(Object.assign(newFirm(item.name),item)));add++;}
     });
-    save();drawMap();document.getElementById('r-json').value='';
+    if(!await save()){ toast('Import übernommen, aber Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000); return; }
+    drawMap();document.getElementById('r-json').value='';
     toast('Importiert: '+add+' neu, '+upd+' aktualisiert');
   }catch(e){toast('JSON-Fehler: '+e.message.slice(0,50));}
 }
@@ -3332,7 +3458,7 @@ function renderMailPanel(){
   var box=document.getElementById('mail-clean-prompt');
   if(box&&_mailCleanPrompt) box.textContent=_mailCleanPrompt;
 }
-function importMailReviewJson(){
+async function importMailReviewJson(){
   var raw=(document.getElementById('mail-review-json')||{value:''}).value.trim();
   if(!raw){toast('Bitte Mail-Abgleich JSON einfügen.');return;}
   try{
@@ -3376,7 +3502,7 @@ function importMailReviewJson(){
       f.nextSteps=keep;
       touched++;
     });
-    save();
+    if(!await save()){ toast('Mail-Abgleich übernommen, aber Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000); return; }
     renderDB();
     renderQuestOverview();
     renderNextStepsPanel();
@@ -3431,14 +3557,14 @@ function copyNextStepPrompt(fid, stepId, btn){
   if(!p){toast('Aufgabe nicht gefunden.');return;}
   copyText(p, btn);
 }
-function markNextStepDone(fid, stepId){
+async function markNextStepDone(fid, stepId){
   var f=getFirm(fid); if(!f) return;
   f=Object.assign(f, ensureFirmDefaults(f));
   var step=(f.nextSteps||[]).find(function(s){return String(s.id)===String(stepId);});
   if(!step) return;
   step.status='erledigt';
   step.updatedAt=new Date().toISOString();
-  save();
+  if(!await save()) return;
   renderNextStepsPanel();
   toast('Aufgabe erledigt ✓');
 }
@@ -3493,8 +3619,8 @@ function loadProfileTextBlocksUI(){
     var el=document.getElementById('profile-'+k); if(el) el.value=blocks[k]||'';
   });
 }
-function saveCfgConfirm(){
-  if(!saveCfg()) return;
+async function saveCfgConfirm(){
+  if(!await saveCfg()) return;
   var el=document.getElementById('cfg-saved');el.style.display='inline';
   setTimeout(function(){el.style.display='none';},2000);
   toast('Einstellungen gespeichert.');
@@ -3514,9 +3640,13 @@ function updateInfoPanel(){
   set('info-firms',S.firms.length+' Einträge');
   set('info-sent',S.firms.filter(function(f){return['versendet','absage','zusage'].includes(f.status);}).length+' Firmen');
   set('info-regions',S.regions.length+' Regionen');
+  set('info-idb-status',_idbAvailable?'aktiv'+(_loadedFromIndexedDB?' · primär geladen':''):'nicht verfügbar'+(_idbLastError?' · '+getStorageErrorLabel(_idbLastError):''));
+  var markerSet=false;
+  try{ markerSet=localStorage.getItem(IDB_MIGRATED_KEY)==='1'; }catch(e){}
+  set('info-migration-status',_migrationStatus+(markerSet?' · Marker gesetzt':''));
   try{
     var stored=localStorage.getItem(LS)||'';
-    set('info-size',formatJsonSize(getJsonSizeInfo(stored)));
+    set('info-size',stored?formatJsonSize(getJsonSizeInfo(stored)):'nicht vorhanden');
   }catch(e){set('info-size',getStorageErrorLabel(e));}
   try{set('info-runtime-size',formatJsonSize(getJsonSizeInfo(JSON.stringify(S))));}catch(e){set('info-runtime-size','Nicht serialisierbar');}
   var errEl=document.getElementById('storage-error-notice');
@@ -3669,16 +3799,19 @@ function emergencyExport(){
   toast('Emergency-Backup aus aktuellem Runtime-State exportiert.',5000);
   return blob;
 }
-function resetAllQuests(){
+async function resetAllQuests(){
   if(!confirm('Alle Quest-Fortschritte löschen? Firmendaten bleiben erhalten.')) return;
   S.firms.forEach(function(f){f.quest=defaultQuest();});
-  save();toast('Quest-Fortschritte zurückgesetzt.');renderQuestOverview();drawMap();
+  if(!await save()) return;
+  toast('Quest-Fortschritte zurückgesetzt.');renderQuestOverview();drawMap();
 }
-function resetAll(){
+async function resetAll(){
   if(!confirm('WIRKLICH ALLES LÖSCHEN? Nicht rückgängig.')) return;
   if(!confirm('Letzte Chance: Alle Firmen, Regionen und Einstellungen werden gelöscht.')) return;
   localStorage.removeItem(LS);S=defaultS();S.cfg={};
-  save();loadCfgUI();renderQuestOverview();renderDB();drawMap();toast('Alle Daten gelöscht.');
+  try{ await idbDelete(IDB_STATE_KEY); }catch(e){ recordPersistError(e,null); return; }
+  if(!await save()) return;
+  loadCfgUI();renderQuestOverview();renderDB();drawMap();toast('Alle Daten gelöscht.');
 }
 
 // ================================================================
@@ -3922,12 +4055,12 @@ async function gistPushPayload(token,id,payload,silent){
       body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(toSend,null,2)}}})
     });
     if(!r.ok) throw new Error('PATCH HTTP '+r.status);
-    persistLocalOnly();
+    if(!await persistLocalOnly()) throw new Error('IndexedDB-Speichern nach Gist-Push fehlgeschlagen');
     setSyncStatus('Synchronisiert ✓',true,false);
     if(!silent) toast('☁ Synchronisiert');
   }catch(e){
     S._lastExported=prevTs;
-    persistLocalOnly();
+    await persistLocalOnly();
     throw e;
   }
 }
@@ -3945,7 +4078,7 @@ async function gistSync(opts){
     try{ remoteData = await gistFetchRemote(token,id); }
     catch(e){ setSyncStatus('Abruf-Fehler',false,false); throw new Error('Abruf: '+e.message); }
     if(mode==='pull'){
-      if(remoteData){ gistApplyData(remoteData,{skipRender:false}); setSyncStatus('Heruntergeladen ✓',true,false); if(!silent) toast('⬇ Daten geladen'); return {pulled:true}; }
+      if(remoteData){ if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen'); setSyncStatus('Heruntergeladen ✓',true,false); if(!silent) toast('⬇ Daten geladen'); return {pulled:true}; }
       setSyncStatus('Keine Remote-Datei',true,false); return {skipped:true,reason:'no-remote'};
     }
     var localData=gistBuildPayload(S._lastExported||'');
@@ -3964,7 +4097,7 @@ async function gistSync(opts){
     var normalizedMerged=normalizePayloadForCompare(mergedPayload);
     var didChange = stableStringify(normalizePayloadForCompare(localData))!==stableStringify(normalizedMerged);
     var needsPush = stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
-    gistApplyData(mergedPayload,{skipRender:true});
+    if(!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Speichern nach Gist-Merge fehlgeschlagen');
     if(!needsPush && !didChange){
       setSyncStatus('Sync ohne Änderungen',true,false);
       if(!silent&&mode!=='auto') toast('Sync: keine Änderungen');
@@ -3974,7 +4107,7 @@ async function gistSync(opts){
     if(needsPush || mode==='push'){
       try{ await gistPushPayload(token,id,mergedPayload,silent); }
       catch(e){ setSyncStatus('Push-Fehler',false,false); throw new Error('Push: '+e.message); }
-      gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false});
+      if(!await gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Push fehlgeschlagen');
       return {pushed:true,didChange:didChange,needsPush:needsPush,localTime:localTime,remoteTime:remoteTime};
     }
     setSyncStatus('Heruntergeladen ✓',true,false);
@@ -4001,7 +4134,7 @@ function gistMerge(){
   gistSync({mode:'merge',silent:false});
 }
 
-function gistApplyData(data, opts){
+async function gistApplyData(data, opts){
   opts=opts||{};
   if(data.firms) S.firms=data.firms.map(function(f){ return ensureFirmDefaults(f); });
   if(data.regions&&data.regions.length) S.regions=data.regions;
@@ -4013,11 +4146,13 @@ function gistApplyData(data, opts){
   S.firms = (S.firms||[]).filter(function(f){ return !isFirmDeleted(f.id); });
   // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it
   S._lastExported=data.exported||S._lastExported||'';
-  persistLocalOnly();
+  var persisted=await persistLocalOnly();
+  if(!persisted) return false;
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
     if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); loadProfileTextBlocksUI(); }
   }
+  return true;
 }
 
 function gistStartupSync(){
@@ -4049,26 +4184,28 @@ var SEED=[
   {name:'DATAGROUP Bremen',region:'Bremen',kategorie:'a',status:'offen',adresse:'DATAGROUP Bremen GmbH\nUniversitätsallee 5\n28359 Bremen',email:'bewerbung@datagroup.de',ansprechpartner:'',anrede:'Sehr geehrtes Recruiting-Team',anschreibenSatz:'Offenheit gegenüber Quereinsteigern und strukturierte Langzeitpraktika machen DATAGROUP attraktiv.',stichpunkte:'IT-Dienstleistungen. Quereinsteiger-freundlich.',eignungsurteil:'✅ GEEIGNET'}
 ];
 
-function seedIfEmpty(){
+async function seedIfEmpty(){
   if(S.firms.length===0){
     S.firms=SEED.map(function(f){return Object.assign(newFirm(f.name),f,{id:uid(),quest:defaultQuest()});});
-    save();
+    await save();
   }
 }
 
 // ================================================================
 // INIT
 // ================================================================
-load();
-loadCfgUI();
-gistStartupSync().finally(function(){
-  seedIfEmpty();
+async function init(){
+  await load();
+  loadCfgUI();
+  await gistStartupSync();
+  await seedIfEmpty();
   renderTabs();
   loadGistCfgUI();
   renderDBRegionFilter();
   renderQuestOverview();
   setTimeout(function(){ drawMap(); }, 200);
-});
+}
+init().catch(function(e){ console.error('App initialization failed',e); toast('Initialisierung fehlgeschlagen: '+String(e.message||e).slice(0,50)); });
 window.addEventListener('resize', function(){
   if(currentTab==='map') drawMap();
   // Re-evaluate mobile bar on orientation/resize
