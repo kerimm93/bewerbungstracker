@@ -637,6 +637,7 @@ textarea{resize:vertical;min-height:80px;}
             <div class="ss-cell"><div class="ss-key">Anrede</div><div class="ss-val empty" id="sd-anr">—</div></div>
             <div class="ss-cell"><div class="ss-key">Ansprechpartner</div><div class="ss-val empty" id="sd-ap">—</div></div>
             <div class="ss-cell"><div class="ss-key">E-Mail</div><div class="ss-val empty" id="sd-em">—</div></div>
+            <div class="ss-cell"><div class="ss-key">Telefon</div><div class="ss-val empty" id="sd-tel">—</div></div>
           </div>
           <div class="addr-row">
             <div class="ss-key">Firmenadresse</div>
@@ -1071,7 +1072,7 @@ function defaultQuest() {
   return {
     done:{}, returns:{}, extracted:{},
     rawReturns:{}, normalizedReturns:{},
-    contact:{ansprechpartner:'',anrede:'',email:'',adresse:''},
+    contact:{ansprechpartner:'',anrede:'',email:'',telefon:'',adresse:''},
     checkResult:null,
     verdict:'',
     stepStatus:{},
@@ -1087,7 +1088,7 @@ function ensureQuestDefaults(q) {
   q.extracted = q.extracted && typeof q.extracted==='object' ? q.extracted : {};
   q.rawReturns = q.rawReturns && typeof q.rawReturns==='object' ? q.rawReturns : {};
   q.normalizedReturns = q.normalizedReturns && typeof q.normalizedReturns==='object' ? q.normalizedReturns : {};
-  q.contact = Object.assign({ansprechpartner:'',anrede:'',email:'',adresse:''}, (q.contact && typeof q.contact==='object') ? q.contact : {});
+  q.contact = Object.assign({ansprechpartner:'',anrede:'',email:'',telefon:'',adresse:''}, (q.contact && typeof q.contact==='object') ? q.contact : {});
   q.checkResult = q.checkResult && typeof q.checkResult==='object' ? q.checkResult : null;
   q.verdict = typeof q.verdict==='string' ? q.verdict : '';
   q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
@@ -1367,7 +1368,7 @@ function newFirm(name) {
   return {
     id: uid(), name:name||'', region:'', kategorie:'unklar',
     status:'offen', bewerbungsDatum:'',
-    adresse:'', email:'', ansprechpartner:'', anrede:'',
+    adresse:'', email:'', telefon:'', ansprechpartner:'', anrede:'',
     anschreibenSatz:'', stichpunkte:'', eignungsurteil:'', notizen:'',
     quest: defaultQuest(),
     mailReview: defaultMailReview(),
@@ -1811,6 +1812,7 @@ function updateStatusStrip(f) {
   setV('sd-ap',c.ansprechpartner,'— nicht bekannt');
   setV('sd-anr',c.anrede,'— Sehr geehrte Damen und Herren');
   setV('sd-em',c.email,'— nicht bekannt');
+  setV('sd-tel',c.telefon,'— nicht bekannt');
   var addrEl=document.getElementById('sd-addr');
   if(c.adresse){addrEl.textContent=c.adresse;addrEl.classList.remove('empty');}
   else{addrEl.textContent='— noch nicht ermittelt';addrEl.classList.add('empty');}
@@ -1953,10 +1955,48 @@ async function saveQuestToDB() {
   if(q.contact.ansprechpartner) f.ansprechpartner=q.contact.ansprechpartner;
   if(q.contact.anrede) f.anrede=q.contact.anrede;
   if(q.contact.email) f.email=q.contact.email;
+  if(q.contact.telefon) f.telefon=q.contact.telefon;
   if(q.contact.adresse) f.adresse=q.contact.adresse;
   if(q.extracted[2]) f.stichpunkte=q.extracted[2];
   if(!await save()) return;
   toast('In DB gespeichert: '+f.name);
+}
+
+function normalizePdfFileNamePart(value,fallback){
+  var text=String(value||'').trim();
+  if(!text) text=String(fallback||'').trim();
+  return text
+    .replace(/Ä/g,'Ae').replace(/Ö/g,'Oe').replace(/Ü/g,'Ue')
+    .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/&/g,' und ')
+    .replace(/[^A-Za-z0-9-]+/g,'_')
+    .replace(/^_+|_+$/g,'')
+    .replace(/_+/g,'_') || String(fallback||'').replace(/[^A-Za-z0-9-]+/g,'_');
+}
+function getFirmLocation(firm){
+  firm=firm||{};
+  var contact=firm.quest&&firm.quest.contact||{};
+  var addresses=[firm.adresse,contact.adresse];
+  for(var i=0;i<addresses.length;i++){
+    var address=String(addresses[i]||'').replace(/\r/g,'').trim();
+    if(!address) continue;
+    var match=address.match(/(?:^|[\n,;]\s*)\d{5}\s+([^\n,;]+)/i);
+    if(!match) match=address.match(/\b\d{5}\s+([^\n,;]+)/i);
+    if(match&&match[1]){
+      var location=match[1].replace(/\s+(Deutschland|Germany)$/i,'').trim();
+      if(location) return location;
+    }
+  }
+  return String(firm.region||'').trim()||'Ort';
+}
+function buildPdfFileName(firm){
+  firm=firm||{};
+  var cfg=getCfg();
+  var name=normalizePdfFileNamePart(cfg&&cfg.name,'Bewerbung');
+  var company=normalizePdfFileNamePart(firm.name,'Firma');
+  var location=normalizePdfFileNamePart(getFirmLocation(firm),'Ort');
+  return name+'_Bewerbung_FIAE-Pflichtpraktikum_'+company+'_'+location+'.pdf';
 }
 
 // ================================================================
@@ -1971,12 +2011,12 @@ var STEPS=[
    cleanPrompt:function(raw,c){return 'Extrahiere aus dieser Eignungsprüfung für '+(c||'[FIRMA]')+' exakt diesen JSON-Block und nichts anderes:\n\n```json\n{\n  "urteil": "✅ GEEIGNET | 🟡 POTENZIELL | ⚠️ UNKLAR | ❌ UNGEEIGNET",\n  "stichpunkte": ["Stichpunkt 1","Stichpunkt 2","Stichpunkt 3","Stichpunkt 4"],\n  "begruendung": "1–2 Sätze"\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben.';},
    prompt:function(c){var cfg=getCfg();return 'Prüfe ob '+( c||'[FIRMA]')+' für ein FIAE-Pflichtpraktikum (Umschulung '+cfg.traeger+') geeignet ist. Nur Websuche.\n\n## HARTE KRITERIEN (MUSS)\nA – IT/Software-Tätigkeitsfeld\nB – IHK-Ausbildungsbetrieb ODER IT-Ausbildung ODER Umschüler\nC – Programmiersprachen, Frameworks, Projektarbeit\n## WEICHE KRITERIEN\nD – Präsenzstandort, Teamstruktur\nE – Größe, Mentoring\n\nTabelle: Kriterium | Bewertung | Begründung | Quelle\nGesamtbewertung: ✅ geeignet / 🟡 potenziell / ⚠️ unklar / ❌ ungeeignet + max. 4 Stichpunkte';}},
   {phase:null,num:2,tool:'perplexity',tl:'Perplexity',
-   name:'Kontaktdaten',desc:'Adresse · Ansprechpartner · E-Mail',
+   name:'Kontaktdaten',desc:'Adresse · Ansprechpartner · E-Mail · Telefon',
    note:'App liest JSON automatisch — Anrede fließt in Schritt 7.',
    rt:'contact',rh:'Perplexity-Antwort einfügen (App findet JSON automatisch) …',
    structural:true,
-   cleanPrompt:function(raw,c){return 'Extrahiere aus diesem Text die Kontaktdaten für '+(c||'[FIRMA]')+' und gib NUR diesen JSON-Block aus.\nWichtig: Nichts ergänzen, nichts raten, nichts konstruieren.\nWenn eine Angabe nicht eindeutig belegt ist, Feld leer lassen.\nWenn im Rohtext keine E-Mail sicher belegt ist: "email" leer lassen.\nWenn keine Person sicher belegt ist: "ansprechpartner" leer lassen.\n\n```json\n{\n  "ansprechpartner": "",\n  "anrede": "",\n  "email": "",\n  "adresse": ""\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben, keine Erklärungen.';},
-   prompt:function(c){return 'Recherchiere Kontaktdaten für Praktikumsbewerbung (FIAE-Umschulung) bei '+(c||'[FIRMA]')+'. Nur Websuche.\n\nRegeln (streng):\n- Keine erfundenen Kontaktdaten.\n- Keine plausibel geschätzten E-Mail-Adressen.\n- Keine geratenen Ansprechpartner.\n- Nur belegbare Informationen aus offiziellen oder direkt nachvollziehbaren Quellen verwenden.\n- Wenn etwas nicht sicher belegt ist, Feld leer lassen.\n\nGib am Ende ZWINGEND diesen JSON-Block aus:\n```json\n{\n  "ansprechpartner": "",\n  "anrede": "",\n  "email": "",\n  "adresse": ""\n}\n```';}},
+   cleanPrompt:function(raw,c){return 'Extrahiere aus diesem Text die Kontaktdaten für '+(c||'[FIRMA]')+' und gib NUR diesen JSON-Block aus.\nWichtig: Nichts ergänzen, nichts raten, nichts konstruieren.\nWenn eine Angabe nicht eindeutig belegt ist, Feld leer lassen.\nWenn im Rohtext keine E-Mail sicher belegt ist: "email" leer lassen.\nWenn keine Telefonnummer sicher belegt ist: "telefon" leer lassen.\nWenn keine Person sicher belegt ist: "ansprechpartner" leer lassen.\n\n```json\n{\n  "ansprechpartner": "",\n  "anrede": "",\n  "email": "",\n  "telefon": "",\n  "adresse": ""\n}\n```\n\nRohergebnis:\n---\n'+(raw||'[ROHERGEBNIS EINFÜGEN]')+'\n---\nNur den JSON-Block ausgeben, keine Erklärungen.';},
+   prompt:function(c){return 'Recherchiere Kontaktdaten für Praktikumsbewerbung (FIAE-Umschulung) bei '+(c||'[FIRMA]')+'. Nur Websuche.\n\nRegeln (streng):\n- Keine erfundenen Kontaktdaten.\n- Keine plausibel geschätzten E-Mail-Adressen oder Telefonnummern.\n- Keine geratenen Ansprechpartner.\n- Nur belegbare Informationen aus offiziellen oder direkt nachvollziehbaren Quellen verwenden.\n- Wenn etwas nicht sicher belegt ist, Feld leer lassen.\n\nGib am Ende ZWINGEND diesen JSON-Block aus:\n```json\n{\n  "ansprechpartner": "",\n  "anrede": "",\n  "email": "",\n  "telefon": "",\n  "adresse": ""\n}\n```';}},
   {phase:null,num:3,tool:'perplexity',tl:'Perplexity',
    name:'Firmenprofil-Stichpunkte',desc:'Fakten für den firmenspezifischen Satz',
    note:'Stichpunkte fließen automatisch in Schritt 4.',
@@ -1999,20 +2039,21 @@ var STEPS=[
    cleanPrompt:function(raw,c){return 'Analysiere dieses Prüfergebnis für '+(c||'[FIRMA]')+' und gib NUR ein strikt parsebares JSON zurück.\nKeine Vorrede, kein Markdown, kein Codeblock, nur JSON.\n\nZielschema:\n{\n  "pflichtpruefung": {\n    "umschulung": true,\n    "ausbildungsberuf": true,\n    "zeitraum": true,\n    "pflichtpraktikum": true,\n    "unternehmen_standort": true\n  },\n  "faktencheck": {\n    "firma_existiert": true,\n    "adresse_geprueft": true,\n    "taetigkeitsfeld_passend": true\n  },\n  "urteil": "✅ BEREIT | ⚠️ KORREKTURBEDARF | ❌ NICHT VERWENDBAR",\n  "korrekturen": ["..."],\n  "quellen": ["https://..."],\n  "kurzbegruendung": "..."\n}\n\nRohergebnis:\n---\n'+(raw||'[PRUEFERGEBNIS EINFÜGEN]')+'\n---\n\nWichtig: Gib ausschließlich gültiges JSON im exakt passenden Schema aus.';},
    prompt:function(c,ext){var as=(ext&&ext[3])?ext[3]:'[ANSCHREIBEN AUS SCHRITT 4]';return 'Prüf-Assistent FIAE. Keine Umformulierungen. Unternehmensangaben per Websuche.\nAnschreiben:\n'+as+'\nUnternehmen: '+(c||'[FIRMA]')+'\n1. Pflichtprüfung: ✅/❌ Umschulung · Ausbildungsberuf · Zeitraum · Pflichtpraktikum · Unternehmen+Standort\n2. Faktencheck (Websuche): Existenz, Adresse, Tätigkeitsfeld\n3. Urteil: ✅ Bereit zum Versand / ⚠️ Korrekturbedarf';}},
   {phase:'Phase III — Finalisierung',pi:'📜',num:6,tool:'gpt',tl:'ChatGPT',
-   name:'PDF-Dateiname',desc:'Schema ohne Umlaute',
-   note:'Nach Zusammenfügen Anschreiben+Lebenslauf.',
+   name:'PDF-Dateiname',desc:'Generisch aus Profil, Firma und Ort',
+   note:'Wird aus vorhandenen App-Daten erzeugt.',
    rt:null,
-   prompt:function(c){var cfg=getCfg();return 'Dateiname: '+cfg.name+' · FIAE-Pflichtpraktikum · '+(c||'[FIRMA]')+'. Schema: Name_Bewerbung_Rolle_Firma_Ort.pdf · Kein Umlaut.';}},
+   prompt:function(c,ext,contact,firm){return buildPdfFileName(firm||{name:c||'',quest:{contact:contact||{}}});}},
   {phase:null,num:7,tool:'gpt',tl:'ChatGPT',
    name:'Mailtext',desc:'Sachlicher Begleittext',
    note:'Anrede aus Schritt 2 automatisch eingesetzt.',
    rt:null,
-   prompt:function(c,ext,contact){var cfg=getCfg();var anr=(contact&&contact.anrede)?contact.anrede:'Sehr geehrte Damen und Herren';var inj=contact&&contact.anrede;return 'Mailtext für Bewerbungsversand.\nUnternehmen: '+(c||'[FIRMA]')+'\nAnrede: '+anr+(inj?' [automatisch aus Schritt 2]':' [Fallback]')+'\nBetreff: Bewerbung um ein Pflichtpraktikum als '+cfg.beruf+'\nUmschulung · '+cfg.traeger+' · '+cfg.von+'–'+cfg.bis+' · Max. 3–5 Zeilen · PDF beigefügt · Deutsch';}},
+   prompt:function(c,ext,contact,firm){var cfg=getCfg();var anr=(contact&&contact.anrede)?contact.anrede:'Sehr geehrte Damen und Herren';var inj=contact&&contact.anrede;firm=firm||{};var q=firm.quest||{};var sources=q.checkResult&&Array.isArray(q.checkResult.quellen)?q.checkResult.quellen:[];return 'Mailtext für eine Praktikumsbewerbung.\nUnternehmen: '+(c||'[FIRMA]')+'\nAnrede: '+anr+(inj?' [automatisch aus Schritt 2]':' [Fallback]')+'\nBetreff: Bewerbung um ein Pflichtpraktikum als '+cfg.beruf+'\nFirmeninformationen: '+(q.extracted&&q.extracted[2]||firm.stichpunkte||'[keine hinterlegt]')+'\nNotizen: '+(q.bausteine&&q.bausteine.notizen||firm.notizen||'[keine hinterlegt]')+'\nQuellen: '+(sources.length?sources.join(', '):'[keine hinterlegt]')+'\nUmschulung · '+cfg.traeger+' · '+cfg.von+'–'+cfg.bis+' · Max. 3–5 Zeilen · PDF beigefügt · Deutsch · Keine Angaben erfinden';}},
   {phase:'Phase IV — Dokumentation',pi:'📖',num:8,tool:'gpt',tl:'ChatGPT',
-   name:'Tracking-Eintrag',desc:'Tab-getrennter Codeblock',
-   note:'Versendete E-Mail einfügen.',
+   name:'Tracking-Eintrag',desc:'Kurzer Eintrag aus App-Daten',
+   note:'Status und nächste Handlung nur bei bestätigten Angaben setzen.',
    rt:null,
-   prompt:function(c){return 'Tracking-Eintrag aus E-Mail:\n[E-MAIL EINFÜGEN]\nSpalten tab-getrennt: Datum\\tInitiativ\\tArt der Anzeige\\tFirma,PLZ,Ort\\tStelle\\tAbsage\\tVorstellungsgespräch\\tPraktikum\\tNeues Arbeitsverhältnis\nDatum: YYYY-MM-DD · Initiativ: ja · Art: Initiativbewerbung · Stelle: Praktikum Fachinformatiker Anwendungsentwicklung · alle Status: nein. Als Codeblock.';}}
+   prompt:function(c,ext,contact,firm){firm=firm||{};return 'Erstelle einen kurzen, sachlichen Tracking-Eintrag aus den vorhandenen App-Daten.\nFirma: '+(c||'[FIRMA]')+'\nOrt: '+getFirmLocation(firm)+'\nAktueller Status: '+(firm.status||'offen')+'\nBewerbungsdatum: '+(firm.bewerbungsDatum||'[nicht bekannt]')+'\nNotizen: '+(firm.notizen||'[keine hinterlegt]')+'\nKeine versendete Bewerbung voraussetzen. Fehlende Angaben leer lassen und nur bestätigte Statusänderungen oder nächste Handlungen vorschlagen.';}}
+
 ];
 
 var HANDOFF_STEP_INDEXES=[0,1,2,3,4,6,7];
@@ -2021,7 +2062,7 @@ var QUEST_HANDOFF_TYPE='bewerbungstracker-quest-step-handoff-v1';
 function isHandoffStep(si){ return HANDOFF_STEP_INDEXES.indexOf(Number(si))!==-1; }
 function getLegacyStepPrompt(si, f) {
   var s=STEPS[si];
-  try { return typeof s.prompt==='function' ? s.prompt(f.name,f.quest.extracted,f.quest.contact) : ''; }
+  try { return typeof s.prompt==='function' ? s.prompt(f.name,f.quest.extracted,f.quest.contact,f) : ''; }
   catch(e) { return '[Fehler: '+e.message+']'; }
 }
 function getStepKnownData(si, f){
@@ -2037,8 +2078,15 @@ function getStepKnownData(si, f){
     common.pdfDraft=q.pdfDraft;
     common.anschreiben=q.extracted[3]||'';
   }
-  if(si===6) common.mailKontext={anrede:q.contact.anrede||f.anrede||'',empfaengerEmail:q.contact.email||f.email||''};
-  if(si===7) common.trackingKontext={status:f.status||'',bewerbungsDatum:f.bewerbungsDatum||''};
+  if(si===6) common.mailKontext={
+    anrede:q.contact.anrede||f.anrede||'',
+    empfaengerEmail:q.contact.email||f.email||'',
+    telefon:q.contact.telefon||f.telefon||'',
+    firmeninformationen:q.extracted[2]||f.stichpunkte||'',
+    notizen:(q.bausteine&&q.bausteine.notizen)||f.notizen||'',
+    quellen:q.checkResult&&Array.isArray(q.checkResult.quellen)?q.checkResult.quellen:[]
+  };
+  if(si===7) common.trackingKontext={status:f.status||'',bewerbungsDatum:f.bewerbungsDatum||'',ort:getFirmLocation(f),notizen:f.notizen||''};
   return common;
 }
 function getStepStartPrompt(si, f){
@@ -2046,12 +2094,12 @@ function getStepStartPrompt(si, f){
   var s=STEPS[si], cfg=getCfg();
   var goals={
     0:'Prüfe gemeinsam mit mir, ob das Unternehmen für mein FIAE-Pflichtpraktikum geeignet ist. Recherchiere nachvollziehbar, trenne belegte Fakten von Annahmen und benenne Quellen sowie Unsicherheiten.',
-    1:'Ermittle und prüfe mit mir belastbare Kontaktdaten für die Praktikumsbewerbung. Erfinde keine E-Mail-Adresse oder Ansprechperson; markiere fehlende oder widersprüchliche Angaben.',
+    1:'Ermittle und prüfe mit mir belastbare Kontaktdaten einschließlich einer belegten Telefonnummer für die Praktikumsbewerbung. Erfinde keine E-Mail-Adresse, Telefonnummer oder Ansprechperson; markiere fehlende oder widersprüchliche Angaben.',
     2:'Erarbeite mit mir belastbare Unternehmensstichpunkte für den firmenspezifischen Teil des Anschreibens. Ordne Kernkompetenzen, IT-Fokus sowie Hinweise zu Ausbildung oder Praktikum ein.',
     3:'Erarbeite mit mir die vorhandenen Anschreiben-Blöcke für diese Firma. Nutze die globalen Standardblöcke und die vorhandenen pdfDraft-Overrides; Änderungen, bewusste Leerwerte und Annahmen sollen wir vor der Finalisierung abstimmen.',
     4:'Prüfe das vorhandene Anschreiben gemeinsam mit mir auf Pflichtangaben, Fakten und Versandtauglichkeit. Schlage Korrekturen vor, ändere aber nichts ungefragt und belege recherchierte Unternehmensangaben.',
-    6:'Erarbeite mit mir Betreff und kurzen sachlichen Mailtext. Wir prüfen Empfänger, Anrede und Formulierung gemeinsam; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.',
-    7:'Erarbeite mit mir den Tracking-Eintrag und ein sinnvolles Statusupdate. Wir klären Datum, Text und mögliche nächste Handlungen; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.'
+    6:'Erarbeite mit mir Betreff und kurzen sachlichen Mailtext. Nutze vorhandene Firmeninformationen, Notizen und belegte Quellen, ohne fehlende Angaben zu erfinden. Wir prüfen Empfänger, Anrede und Formulierung gemeinsam; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.',
+    7:'Erarbeite mit mir einen knappen Tracking-Eintrag aus den vorhandenen App-Daten. Setze keinen Versand voraus und übernimm Statusänderungen oder nächste Handlungen nur, wenn sie bestätigt sind; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.'
   };
   return 'Starte einen offenen Arbeitschat für den Bewerbungsschritt „'+s.name+'“ bei „'+(f.name||'[FIRMA]')+'“.\n\n'
     +'Ziel: '+goals[si]+'\n\n'
@@ -2065,12 +2113,12 @@ function getStepStartPrompt(si, f){
 function getStepHandoffDataSchema(si){
   var schemas={
     0:{urteil:'✅ GEEIGNET | 🟡 POTENZIELL | ⚠️ UNKLAR | ❌ UNGEEIGNET',stichpunkte:[],begruendung:'',quellen:[],unsicherheiten:[]},
-    1:{ansprechpartner:'',anrede:'',email:'',adresse:'',quellen:[],unsicherheiten:[]},
+    1:{ansprechpartner:'',anrede:'',email:'',telefon:'',adresse:'',quellen:[],unsicherheiten:[]},
     2:{stichpunkte_roh:'',kernkompetenzen:[],it_fokus:[],ausbildung_praktikum_hinweise:[],besonderheit:'',quellen:[],unsicherheiten:[]},
     3:{standardEinleitungOverride:'',firmenspezifischerSatz:'',standardMotivationOverride:'',standardProjekteOverride:'',standardSchlussOverride:'',notizen:'',quellenOderAnnahmen:[]},
     4:{pflichtpruefung:{umschulung:false,ausbildungsberuf:false,zeitraum:false,pflichtpraktikum:false,unternehmen_standort:false},faktencheck:{firma_existiert:false,adresse_geprueft:false,taetigkeitsfeld_passend:false},urteil:'',korrekturen:[],quellen:[],kurzbegruendung:''},
     6:{mailtext:'',betreff:'',empfaengerEmail:'',anrede:'',notizen:''},
-    7:{bewerbungsDatum:'',trackingText:'',statusUpdate:'versendet',notizen:''}
+    7:{bewerbungsDatum:'',trackingText:'',statusUpdate:'',notizen:''}
   };
   return schemas[si]||{};
 }
@@ -2183,7 +2231,7 @@ function validIsoDate(value){
 function pickHandoffData(si, data){
   var allowed={
     0:['urteil','stichpunkte','begruendung','quellen','unsicherheiten'],
-    1:['ansprechpartner','anrede','email','adresse','quellen','unsicherheiten'],
+    1:['ansprechpartner','anrede','email','telefon','adresse','quellen','unsicherheiten'],
     2:['stichpunkte_roh','kernkompetenzen','it_fokus','ausbildung_praktikum_hinweise','besonderheit','quellen','unsicherheiten'],
     3:['standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride','notizen','quellenOderAnnahmen'],
     4:['pflichtpruefung','faktencheck','urteil','korrekturen','quellen','kurzbegruendung'],
@@ -2228,15 +2276,16 @@ async function importQuestStepHandoffJson(raw){
     var verdictText=handoffSummary(data,['urteil','stichpunkte','begruendung','quellen','unsicherheiten']);
     if(verdictText) q.extracted[si]=verdictText;
   } else if(si===1){
-    ['ansprechpartner','anrede','email','adresse'].forEach(function(key){
+    ['ansprechpartner','anrede','email','telefon','adresse'].forEach(function(key){
       var value=handoffString(data,key);
       if(value!==null&&value.trim()) q.contact[key]=value.replace(/\\n/g,'\n').trim();
     });
     if(q.contact.ansprechpartner){f.ansprechpartner=q.contact.ansprechpartner;q.bausteine.ansprechpartner=q.contact.ansprechpartner;}
     if(q.contact.anrede) f.anrede=q.contact.anrede;
     if(q.contact.email) f.email=q.contact.email;
+    if(q.contact.telefon) f.telefon=q.contact.telefon;
     if(q.contact.adresse){f.adresse=q.contact.adresse;q.bausteine.adressblock=q.contact.adresse;}
-    q.extracted[si]=handoffSummary(data,['ansprechpartner','anrede','email','adresse','quellen','unsicherheiten']);
+    q.extracted[si]=handoffSummary(data,['ansprechpartner','anrede','email','telefon','adresse','quellen','unsicherheiten']);
     changed.push('Kontaktdaten');
   } else if(si===2){
     var profileText=handoffString(data,'stichpunkte_roh');
@@ -2280,7 +2329,8 @@ async function importQuestStepHandoffJson(raw){
   } else if(si===7){
     var applicationDate=validIsoDate(data.bewerbungsDatum);
     if(applicationDate){f.bewerbungsDatum=applicationDate;changed.push('Bewerbungsdatum');}
-    if(String(data.statusUpdate||'').trim().toLowerCase()==='versendet'){f.status='versendet';changed.push('Status versendet');}
+    var statusUpdate=String(data.statusUpdate||'').trim().toLowerCase();
+    if(['offen','versendet','absage','zusage'].indexOf(statusUpdate)!==-1){f.status=statusUpdate;changed.push('Status '+statusUpdate);}
     q.extracted[si]=handoffSummary(data,['bewerbungsDatum','trackingText','statusUpdate','notizen']);
     changed.push('Tracking-Eintrag');
   }
@@ -2630,7 +2680,7 @@ function refreshPdfDraftPreview(){
 function getLegacyPdfPrintHtml(f,m){
   var addrHtml=esc(m.adressblock||'').replace(/\n/g,'<br>');
   function optionalParagraph(value){ return value?'<p>'+formatLetterText(value)+'</p>':''; }
-  return '<!doctype html><html><head><meta charset="utf-8"><title>Anschreiben - '+esc(f.name||'Firma')+'</title>'
+  return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(buildPdfFileName(f))+'</title>'
     +'<style>@page{size:A4;margin:0;}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;}'
     +'body{padding:14mm;} .page{width:210mm;min-height:297mm;display:flex;background:#fff;box-shadow:0 0 0 1px #d4d9e0 inset;}'
     +'.side{width:34mm;background:#0f2238;} .main{flex:1;position:relative;background:#fff;padding:14mm 16mm 16mm;}'
@@ -2822,7 +2872,7 @@ function buildTemplatePrintHtml(f,m){
   });
   anschreiben=rewriteLocalAssetSources(anschreiben);
   lebenslauf=rewriteLocalAssetSources(lebenslauf);
-  return buildCombinedTemplateDocument(anschreiben,lebenslauf,'Bewerbung - '+(f.name||'Firma'));
+  return buildCombinedTemplateDocument(anschreiben,lebenslauf,buildPdfFileName(f));
 }
 
 function openPdfPrintView(){
@@ -3190,6 +3240,7 @@ function saveNormalized(si) {
         ansprechpartner:jo2.ansprechpartner||'',
         anrede:jo2.anrede||'Sehr geehrte Damen und Herren',
         email:jo2.email||'',
+        telefon:jo2.telefon||'',
         adresse:(jo2.adresse||'').replace(/\\n/g,'\n')
       };
       // auto-fill bausteine
@@ -3288,12 +3339,13 @@ function renderExtracted(si,f) {
   var blk=document.getElementById('se-'+si); if(!blk) return;
   var s=STEPS[si];
   if(s.rt==='contact'){
-    var c=f.quest.contact;var has=c.ansprechpartner||c.anrede||c.email||c.adresse;
+    var c=f.quest.contact;var has=c.ansprechpartner||c.anrede||c.email||c.telefon||c.adresse;
     blk.classList.toggle('vis',!!has);
     if(has) blk.querySelector('.exc').innerHTML='<div class="pf-rows">'
       +'<div class="pf-row"><div class="pf-k">Ansprechpartner</div><div class="pf-v">'+esc(c.ansprechpartner||'—')+'</div></div>'
       +'<div class="pf-row"><div class="pf-k">Anrede</div><div class="pf-v">'+esc(c.anrede||'Sehr geehrte Damen und Herren')+'</div></div>'
       +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(c.email||'—')+'</div></div>'
+      +'<div class="pf-row"><div class="pf-k">Telefon</div><div class="pf-v">'+esc(c.telefon||'—')+'</div></div>'
       +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((c.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
       +'</div>';
   } else if(si===4&&f.quest.checkResult){
@@ -3311,7 +3363,7 @@ function clearReturn(si) {
   delete f.quest.returns[si]; delete f.quest.extracted[si];
   delete f.quest.rawReturns[si]; delete f.quest.normalizedReturns[si];
   if(s.rt==='verdict') f.quest.verdict='';
-  if(s.rt==='contact') f.quest.contact={ansprechpartner:'',anrede:'',email:'',adresse:''};
+  if(s.rt==='contact') f.quest.contact={ansprechpartner:'',anrede:'',email:'',telefon:'',adresse:''};
   if(si===4) f.quest.checkResult=null;
   if((f.quest.stepStatus[si]||'erledigt')!=='offen') f.quest.stepStatus[si]='offen';
   save(); updateStatusStrip(f); refreshAllPrompts(f);
@@ -3374,15 +3426,16 @@ function renderQuestSteps(f){
       var hasRaw=!!(f.quest.rawReturns[i]||f.quest.returns[i]);
       var hasNorm=!!f.quest.normalizedReturns[i];
       var hasEx=s.rt==='contact'
-        ?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.adresse)
+        ?(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.telefon||f.quest.contact.adresse)
         :(i===4?(!!f.quest.checkResult||!!f.quest.extracted[i]):f.quest.extracted[i]);
       var exIn='';
-      if(s.rt==='contact'&&(f.quest.contact.ansprechpartner||f.quest.contact.anrede)){
+      if(s.rt==='contact'&&(f.quest.contact.ansprechpartner||f.quest.contact.anrede||f.quest.contact.email||f.quest.contact.telefon||f.quest.contact.adresse)){
         var ct=f.quest.contact;
         exIn='<div class="pf-rows">'
           +'<div class="pf-row"><div class="pf-k">Ansprechpartner</div><div class="pf-v">'+esc(ct.ansprechpartner||'—')+'</div></div>'
           +'<div class="pf-row"><div class="pf-k">Anrede</div><div class="pf-v">'+esc(ct.anrede||'Sehr geehrte Damen und Herren')+'</div></div>'
           +'<div class="pf-row"><div class="pf-k">E-Mail</div><div class="pf-v">'+esc(ct.email||'—')+'</div></div>'
+          +'<div class="pf-row"><div class="pf-k">Telefon</div><div class="pf-v">'+esc(ct.telefon||'—')+'</div></div>'
           +'<div class="pf-row"><div class="pf-k">Adresse</div><div class="pf-v">'+esc((ct.adresse||'—').replace(/\n/g,' · '))+'</div></div>'
           +'</div>';
       } else if(i===4&&f.quest.checkResult){
@@ -3512,6 +3565,7 @@ function renderDB() {
       +'<div class="fc-f"><div class="fc-l">Status</div><select class="fc-sl" onchange="updF(\''+f.id+'\',\'status\',this.value)"><option value="offen"'+(f.status==='offen'?' selected':'')+'>Offen</option><option value="versendet"'+(f.status==='versendet'?' selected':'')+'>Versendet</option><option value="absage"'+(f.status==='absage'?' selected':'')+'>Absage</option><option value="zusage"'+(f.status==='zusage'?' selected':'')+'>Zusage</option></select></div>'
       +'<div class="fc-f"><div class="fc-l">Datum</div><input class="fc-i" type="date" value="'+esc(f.bewerbungsDatum)+'" onchange="updF(\''+f.id+'\',\'bewerbungsDatum\',this.value)"/></div>'
       +'<div class="fc-f"><div class="fc-l">E-Mail</div><input class="fc-i" value="'+esc(f.email)+'" onchange="updF(\''+f.id+'\',\'email\',this.value)"/></div>'
+      +'<div class="fc-f"><div class="fc-l">Telefon</div><input class="fc-i" value="'+esc(f.telefon)+'" onchange="updF(\''+f.id+'\',\'telefon\',this.value)"/></div>'
       +'<div class="fc-f"><div class="fc-l">Ansprechpartner</div><input class="fc-i" value="'+esc(f.ansprechpartner)+'" onchange="updF(\''+f.id+'\',\'ansprechpartner\',this.value)"/></div>'
       +'<div class="fc-f"><div class="fc-l">Anrede</div><input class="fc-i" value="'+esc(f.anrede)+'" onchange="updF(\''+f.id+'\',\'anrede\',this.value)"/></div>'
       +'<div class="fc-f full"><div class="fc-l">Adresse</div><textarea class="fc-t" rows="3" onchange="updF(\''+f.id+'\',\'adresse\',this.value)">'+esc(f.adresse)+'</textarea></div>'

@@ -10,6 +10,7 @@ const defaultsContext = { Object, String };
 vm.createContext(defaultsContext);
 new vm.Script(script.slice(defaultsStart, defaultsEnd), { filename: 'index.html:quest-defaults' }).runInContext(defaultsContext);
 assert.deepStrictEqual(Object.keys(defaultsContext.defaultQuest().stepChatLinks), []);
+assert.strictEqual(defaultsContext.defaultQuest().contact.telefon, '');
 assert.deepStrictEqual(Object.keys(defaultsContext.ensureQuestDefaults({}).stepChatLinks), []);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(defaultsContext.ensureQuestDefaults({ stepChatLinks: { 1: 'https://chat.example/legacy' } }).stepChatLinks[1])),
@@ -27,10 +28,12 @@ const firm = {
   status: 'offen',
   bewerbungsDatum: '',
   anschreibenSatz: '',
+  stichpunkte: 'Generische Firmeninformation',
+  notizen: 'Generische interne Notiz',
   nextSteps: [],
   quest: {
     done: {}, returns: {}, extracted: {}, rawReturns: {}, normalizedReturns: {},
-    contact: { ansprechpartner: '', anrede: '', email: '', adresse: '' },
+    contact: { ansprechpartner: '', anrede: '', email: '', telefon: '', adresse: '' },
     verdict: '', stepStatus: { 2: 'Rohentwurf' }, stepChatLinks: {},
     bausteine: { ansprechpartner: '', adressblock: '', motivationssatz: '', skillmatch: '', firmenbezug: '', notizen: '' },
     pdfDraft: { _set: {} }
@@ -58,6 +61,7 @@ const context = {
   S: { firms: [firm] },
   activeQuestFirmId: firm.id,
   openSteps: {},
+  getFirmLocation: firmValue => firmValue.region || 'Ort',
   getCfg: () => ({ beruf: 'Fachinformatiker für Anwendungsentwicklung', traeger: 'IBB AG', von: '10.08.2026', bis: '02.04.2027' }),
   getProfileTextBlocks: () => ({ standardEinleitung: 'Standard', standardMotivation: '', standardProjekte: '', standardSchluss: '' }),
   defaultPdfDraft: defaultsContext.defaultPdfDraft,
@@ -102,6 +106,14 @@ new vm.Script(script.slice(mergeStart, mergeEnd), { filename: 'index.html:quest-
 elements['step-chat-link-2'] = { value: ' https://chat.example/step-2 ' };
 const statusBeforeChatSave = firm.quest.stepStatus[2];
 
+const mailStartPrompt = context.getStepStartPrompt(6, firm);
+assert(mailStartPrompt.includes('Generische Firmeninformation'));
+assert(mailStartPrompt.includes('Generische interne Notiz'));
+assert(mailStartPrompt.includes('"quellen": []'));
+const trackingStartPrompt = context.getStepStartPrompt(7, firm);
+assert(trackingStartPrompt.includes('Setze keinen Versand voraus'));
+assert(context.getStepHandoffPrompt(1, firm).includes('"telefon": ""'));
+
 const handoffPrompt = context.getStepHandoffPrompt(3, firm);
 assert(handoffPrompt.includes('bewerbungstracker-quest-step-handoff-v1'));
 assert(handoffPrompt.includes('standardEinleitungOverride'));
@@ -118,6 +130,18 @@ assert(handoffPrompt.includes('firmenspezifischerSatz'));
   await context.saveStepChatLink(2, firm.id);
   assert.strictEqual(firm.quest.stepChatLinks[2].url, '', 'Ein leer gespeicherter Wert muss den Link löschen');
   assert.strictEqual(firm.quest.stepStatus[2], statusBeforeChatSave);
+
+  await context.importQuestStepHandoffJson(JSON.stringify({
+    type: 'bewerbungstracker-quest-step-handoff-v1',
+    firmId: firm.id,
+    firmName: firm.name,
+    stepIndex: 1,
+    stepName: 'Kontaktdaten',
+    data: { ansprechpartner: '', anrede: '', email: '', telefon: '+49 441 123456', adresse: '', quellen: [], unsicherheiten: [] },
+    nextSteps: []
+  }));
+  assert.strictEqual(firm.quest.contact.telefon, '+49 441 123456');
+  assert.strictEqual(firm.telefon, '+49 441 123456');
 
   await context.importQuestStepHandoffJson(JSON.stringify({
     type: 'bewerbungstracker-quest-step-handoff-v1',
