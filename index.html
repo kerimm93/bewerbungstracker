@@ -1020,7 +1020,7 @@ textarea{resize:vertical;min-height:80px;}
 
 <!-- Mobile Bottom Action Bar (Quest-Detail) -->
 <div id="mobile-bottom-bar" style="display:none;">
-  <button class="mba-btn btn-q" id="mba-copy" onclick="mbaCopy()">📋 Prompt</button>
+  <button class="mba-btn btn-q" id="mba-copy" onclick="mbaCopy()">📋 Startchat</button>
   <button class="mba-btn btn-v" id="mba-save" onclick="mbaSave()">💾 Speichern</button>
   <button class="mba-btn mba-next" id="mba-next" onclick="goNextQuest()">⚡ Nächste</button>
 </div>
@@ -1075,6 +1075,7 @@ function defaultQuest() {
     checkResult:null,
     verdict:'',
     stepStatus:{},
+    stepChatLinks:{},
     bausteine:{ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''},
     pdfDraft:defaultPdfDraft()
   };
@@ -1090,6 +1091,13 @@ function ensureQuestDefaults(q) {
   q.checkResult = q.checkResult && typeof q.checkResult==='object' ? q.checkResult : null;
   q.verdict = typeof q.verdict==='string' ? q.verdict : '';
   q.stepStatus = q.stepStatus && typeof q.stepStatus==='object' ? q.stepStatus : {};
+  q.stepChatLinks = q.stepChatLinks && typeof q.stepChatLinks==='object' ? q.stepChatLinks : {};
+  Object.keys(q.stepChatLinks).forEach(function(k){
+    var link=q.stepChatLinks[k];
+    q.stepChatLinks[k]=typeof link==='string'
+      ?{url:link,updatedAt:''}
+      :{url:String((link&&link.url)||''),updatedAt:String((link&&link.updatedAt)||'')};
+  });
   q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
   q.pdfDraft = Object.assign(defaultPdfDraft(), (q.pdfDraft && typeof q.pdfDraft==='object') ? q.pdfDraft : {});
   q.pdfDraft._set = q.pdfDraft._set && typeof q.pdfDraft._set==='object' ? q.pdfDraft._set : {};
@@ -2007,10 +2015,86 @@ var STEPS=[
    prompt:function(c){return 'Tracking-Eintrag aus E-Mail:\n[E-MAIL EINFÜGEN]\nSpalten tab-getrennt: Datum\\tInitiativ\\tArt der Anzeige\\tFirma,PLZ,Ort\\tStelle\\tAbsage\\tVorstellungsgespräch\\tPraktikum\\tNeues Arbeitsverhältnis\nDatum: YYYY-MM-DD · Initiativ: ja · Art: Initiativbewerbung · Stelle: Praktikum Fachinformatiker Anwendungsentwicklung · alle Status: nein. Als Codeblock.';}}
 ];
 
-function getPrompt(si, f) {
+var HANDOFF_STEP_INDEXES=[0,1,2,3,4,6,7];
+var QUEST_HANDOFF_TYPE='bewerbungstracker-quest-step-handoff-v1';
+
+function isHandoffStep(si){ return HANDOFF_STEP_INDEXES.indexOf(Number(si))!==-1; }
+function getLegacyStepPrompt(si, f) {
   var s=STEPS[si];
   try { return typeof s.prompt==='function' ? s.prompt(f.name,f.quest.extracted,f.quest.contact) : ''; }
   catch(e) { return '[Fehler: '+e.message+']'; }
+}
+function getStepKnownData(si, f){
+  var q=ensureQuestDefaults(f.quest);
+  var common={
+    firma:{id:f.id||'',name:f.name||'',region:f.region||'',status:f.status||'',bewerbungsDatum:f.bewerbungsDatum||''},
+    kontaktdaten:q.contact,
+    eignungsurteil:q.verdict||f.eignungsurteil||'',
+    firmenprofil:q.extracted[2]||f.stichpunkte||''
+  };
+  if(si===3||si===4){
+    common.profileTextBlocks=getProfileTextBlocks();
+    common.pdfDraft=q.pdfDraft;
+    common.anschreiben=q.extracted[3]||'';
+  }
+  if(si===6) common.mailKontext={anrede:q.contact.anrede||f.anrede||'',empfaengerEmail:q.contact.email||f.email||''};
+  if(si===7) common.trackingKontext={status:f.status||'',bewerbungsDatum:f.bewerbungsDatum||''};
+  return common;
+}
+function getStepStartPrompt(si, f){
+  if(!isHandoffStep(si)) return getLegacyStepPrompt(si,f);
+  var s=STEPS[si], cfg=getCfg();
+  var goals={
+    0:'Prüfe gemeinsam mit mir, ob das Unternehmen für mein FIAE-Pflichtpraktikum geeignet ist. Recherchiere nachvollziehbar, trenne belegte Fakten von Annahmen und benenne Quellen sowie Unsicherheiten.',
+    1:'Ermittle und prüfe mit mir belastbare Kontaktdaten für die Praktikumsbewerbung. Erfinde keine E-Mail-Adresse oder Ansprechperson; markiere fehlende oder widersprüchliche Angaben.',
+    2:'Erarbeite mit mir belastbare Unternehmensstichpunkte für den firmenspezifischen Teil des Anschreibens. Ordne Kernkompetenzen, IT-Fokus sowie Hinweise zu Ausbildung oder Praktikum ein.',
+    3:'Erarbeite mit mir die vorhandenen Anschreiben-Blöcke für diese Firma. Nutze die globalen Standardblöcke und die vorhandenen pdfDraft-Overrides; Änderungen, bewusste Leerwerte und Annahmen sollen wir vor der Finalisierung abstimmen.',
+    4:'Prüfe das vorhandene Anschreiben gemeinsam mit mir auf Pflichtangaben, Fakten und Versandtauglichkeit. Schlage Korrekturen vor, ändere aber nichts ungefragt und belege recherchierte Unternehmensangaben.',
+    6:'Erarbeite mit mir Betreff und kurzen sachlichen Mailtext. Wir prüfen Empfänger, Anrede und Formulierung gemeinsam; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.',
+    7:'Erarbeite mit mir den Tracking-Eintrag und ein sinnvolles Statusupdate. Wir klären Datum, Text und mögliche nächste Handlungen; das finale Import-JSON fordere ich später separat mit dem Handoff-Prompt an.'
+  };
+  return 'Starte einen offenen Arbeitschat für den Bewerbungsschritt „'+s.name+'“ bei „'+(f.name||'[FIRMA]')+'“.\n\n'
+    +'Ziel: '+goals[si]+'\n\n'
+    +'Rahmen: Umschulung zum '+cfg.beruf+' bei '+cfg.traeger+', Pflichtpraktikum '+cfg.von+'–'+cfg.bis+'.\n\n'
+    +'Bisher bekannte Daten (können unvollständig oder falsch sein):\n'
+    +JSON.stringify(getStepKnownData(si,f),null,2)+'\n\n'
+    +'Arbeite dialogorientiert: Stelle nötige Rückfragen, erkläre Zwischenergebnisse und lass mich Informationen prüfen, korrigieren oder ergänzen. '
+    +'Behaupte Unsicheres nicht als Tatsache. Bei Recherche nenne und prüfe Quellen. '
+    +'Erzeuge jetzt noch kein finales Übergabe-JSON; wir arbeiten und diskutieren zuerst. Das strukturierte JSON fordere ich erst am Ende separat mit dem Handoff-Prompt an.';
+}
+function getStepHandoffDataSchema(si){
+  var schemas={
+    0:{urteil:'✅ GEEIGNET | 🟡 POTENZIELL | ⚠️ UNKLAR | ❌ UNGEEIGNET',stichpunkte:[],begruendung:'',quellen:[],unsicherheiten:[]},
+    1:{ansprechpartner:'',anrede:'',email:'',adresse:'',quellen:[],unsicherheiten:[]},
+    2:{stichpunkte_roh:'',kernkompetenzen:[],it_fokus:[],ausbildung_praktikum_hinweise:[],besonderheit:'',quellen:[],unsicherheiten:[]},
+    3:{standardEinleitungOverride:'',firmenspezifischerSatz:'',standardMotivationOverride:'',standardProjekteOverride:'',standardSchlussOverride:'',notizen:'',quellenOderAnnahmen:[]},
+    4:{pflichtpruefung:{umschulung:false,ausbildungsberuf:false,zeitraum:false,pflichtpraktikum:false,unternehmen_standort:false},faktencheck:{firma_existiert:false,adresse_geprueft:false,taetigkeitsfeld_passend:false},urteil:'',korrekturen:[],quellen:[],kurzbegruendung:''},
+    6:{mailtext:'',betreff:'',empfaengerEmail:'',anrede:'',notizen:''},
+    7:{bewerbungsDatum:'',trackingText:'',statusUpdate:'versendet',notizen:''}
+  };
+  return schemas[si]||{};
+}
+function getStepHandoffPrompt(si, f){
+  if(!isHandoffStep(si)) return '';
+  f.quest=ensureQuestDefaults(f.quest);
+  var knownChatLink=f.quest.stepChatLinks[si]||{url:'',updatedAt:''};
+  var payload={
+    type:QUEST_HANDOFF_TYPE,
+    firmId:f.id||'',
+    firmName:f.name||'',
+    stepIndex:si,
+    stepName:STEPS[si].name,
+    sourceChatUrl:knownChatLink.url||'',
+    data:getStepHandoffDataSchema(si),
+    nextSteps:[{title:'',details:'',dueDate:'',priority:'normal',status:'offen',source:'quest-handoff'}]
+  };
+  return 'Dieser Prompt wird erst am Ende unseres Arbeitschats verwendet. Gib AUSSCHLIESSLICH ein gültiges JSON-Objekt aus, ohne Markdown, Codeblock oder Erläuterungen.\n'
+    +'Übernimm nur im Gespräch geklärte Informationen und verwende ausschließlich die Felder des Schemas. Bei Recherche dürfen Quellen und Unsicherheiten leer bleiben, müssen aber wahrheitsgemäß sein. '
+    +'nextSteps ist optional und soll nur echte, konkrete Handlungen enthalten; sonst gib ein leeres Array aus. Datumswerte nur sicher als YYYY-MM-DD angeben.\n\n'
+    +'Schema für den Reimport in den Bewerbungstracker:\n'+JSON.stringify(payload,null,2);
+}
+function getPrompt(si, f) {
+  return getStepStartPrompt(si,f);
 }
 function promptHTML(text) {
   return esc(text).replace(/\[FIRMA\]/g,'<span class="hl">[FIRMA]</span>')
@@ -2040,8 +2124,8 @@ function cycleStepStatus(si) {
 
 function copyPromptAndSetStatus(si, fid, btn) {
   var f=getFirm(fid); if(!f) return;
-  copyText(getPrompt(si,f),btn);
-  // auto-set status to "begonnen" if still offen
+  copyText(getStepStartPrompt(si,f),btn);
+  // Startchat begins the step, so auto-set status to "begonnen" if still offen.
   if((f.quest.stepStatus[si]||'offen')==='offen') {
     f.quest.stepStatus[si]='begonnen';
     var badge=document.querySelector('#ss-'+si+' .sstatus');
@@ -2049,6 +2133,187 @@ function copyPromptAndSetStatus(si, fid, btn) {
     updateProgress(f); updateMomentumModule(f); renderQuestOverview(); drawMap();
     save();
   }
+}
+
+function copyHandoffPrompt(si, fid, btn){
+  var f=getFirm(fid); if(!f||!isHandoffStep(si)) return;
+  copyText(getStepHandoffPrompt(si,f),btn);
+}
+async function saveStepChatLink(si, fid){
+  var f=getFirm(fid); if(!f) return;
+  f.quest=ensureQuestDefaults(f.quest);
+  var input=document.getElementById('step-chat-link-'+si);
+  if(!input) return;
+  f.quest.stepChatLinks[si]={url:String(input.value||'').trim(),updatedAt:new Date().toISOString()};
+  if(!await save()) return;
+  renderQuestSteps(f);
+  toast('Chat-Link gespeichert ✓');
+}
+function getStepChatUrl(si, fid){
+  var f=getFirm(fid); if(!f) return '';
+  f.quest=ensureQuestDefaults(f.quest);
+  return String(((f.quest.stepChatLinks[si]||{}).url)||'').trim();
+}
+function openStepChatLink(si, fid){
+  var url=getStepChatUrl(si,fid); if(!url) return;
+  if(!/^https?:\/\//i.test(url)){toast('Chat-Link muss mit http:// oder https:// beginnen.');return;}
+  window.open(url,'_blank','noopener');
+}
+function copyStepChatLink(si, fid, btn){
+  var url=getStepChatUrl(si,fid); if(url) copyText(url,btn);
+}
+function handoffOwn(data,key){ return Object.prototype.hasOwnProperty.call(data,key); }
+function handoffString(data,key){ return handoffOwn(data,key)?String(data[key]===null?'':data[key]):null; }
+function handoffStringList(value){
+  return Array.isArray(value)?value.filter(function(v){return typeof v==='string'&&v.trim();}).map(function(v){return v.trim();}):[];
+}
+function handoffSummary(data, keys){
+  return keys.map(function(key){
+    var value=data[key];
+    if(Array.isArray(value)) value=handoffStringList(value).join(', ');
+    return value?key+': '+value:'';
+  }).filter(Boolean).join('\n');
+}
+function validIsoDate(value){
+  var text=String(value||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+  var d=new Date(text+'T00:00:00Z');
+  return !isNaN(d.getTime())&&d.toISOString().slice(0,10)===text?text:'';
+}
+function pickHandoffData(si, data){
+  var allowed={
+    0:['urteil','stichpunkte','begruendung','quellen','unsicherheiten'],
+    1:['ansprechpartner','anrede','email','adresse','quellen','unsicherheiten'],
+    2:['stichpunkte_roh','kernkompetenzen','it_fokus','ausbildung_praktikum_hinweise','besonderheit','quellen','unsicherheiten'],
+    3:['standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride','notizen','quellenOderAnnahmen'],
+    4:['pflichtpruefung','faktencheck','urteil','korrekturen','quellen','kurzbegruendung'],
+    6:['mailtext','betreff','empfaengerEmail','anrede','notizen'],
+    7:['bewerbungsDatum','trackingText','statusUpdate','notizen']
+  };
+  var clean={};
+  (allowed[si]||[]).forEach(function(key){if(handoffOwn(data,key)) clean[key]=data[key];});
+  return clean;
+}
+async function importQuestStepHandoffJson(raw){
+  var parsed=extractJSON(raw);
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) throw new Error('Kein gültiges JSON-Objekt erkannt.');
+  if(parsed.type!==QUEST_HANDOFF_TYPE) throw new Error('Unbekannter Handoff-Typ. Erwartet: '+QUEST_HANDOFF_TYPE);
+  var si=Number(parsed.stepIndex);
+  if(!Number.isInteger(si)||!isHandoffStep(si)||!STEPS[si]) throw new Error('stepIndex ist ungültig oder für diesen Import nicht unterstützt.');
+  if(parsed.stepName&&String(parsed.stepName)!==STEPS[si].name) throw new Error('stepName passt nicht zum angegebenen stepIndex.');
+  var f=parsed.firmId?getFirm(parsed.firmId):null;
+  if(!f&&parsed.firmName) f=findByName(parsed.firmName);
+  if(!f) throw new Error('Firma wurde weder über firmId noch über firmName gefunden.');
+  if(String(f.id)!==String(activeQuestFirmId)) throw new Error('Das Handoff gehört zu „'+f.name+'“. Bitte öffne diese Firma und importiere es dort.');
+  f.quest=ensureQuestDefaults(f.quest);
+  var q=f.quest;
+  var inputData=parsed.data;
+  if(!inputData||typeof inputData!=='object'||Array.isArray(inputData)) throw new Error('data fehlt oder ist kein Objekt.');
+  var data=pickHandoffData(si,inputData);
+  var importedChatUrl=String(parsed.sourceChatUrl||'').trim();
+  if(importedChatUrl){
+    q.stepChatLinks[si]={url:importedChatUrl,updatedAt:new Date().toISOString()};
+  }
+  var stored=JSON.stringify(data,null,2);
+  q.rawReturns[si]=stored;
+  q.returns[si]=stored;
+  q.normalizedReturns[si]=stored;
+  var changed=[];
+
+  if(si===0){
+    var verdict=handoffString(data,'urteil');
+    if(verdict&&/^(✅ GEEIGNET|🟡 POTENZIELL|⚠️ UNKLAR|❌ UNGEEIGNET)$/.test(verdict.trim())){
+      q.verdict=verdict.trim(); f.eignungsurteil=q.verdict; changed.push('Eignungsurteil');
+    }
+    var verdictText=handoffSummary(data,['urteil','stichpunkte','begruendung','quellen','unsicherheiten']);
+    if(verdictText) q.extracted[si]=verdictText;
+  } else if(si===1){
+    ['ansprechpartner','anrede','email','adresse'].forEach(function(key){
+      var value=handoffString(data,key);
+      if(value!==null&&value.trim()) q.contact[key]=value.replace(/\\n/g,'\n').trim();
+    });
+    if(q.contact.ansprechpartner){f.ansprechpartner=q.contact.ansprechpartner;q.bausteine.ansprechpartner=q.contact.ansprechpartner;}
+    if(q.contact.anrede) f.anrede=q.contact.anrede;
+    if(q.contact.email) f.email=q.contact.email;
+    if(q.contact.adresse){f.adresse=q.contact.adresse;q.bausteine.adressblock=q.contact.adresse;}
+    q.extracted[si]=handoffSummary(data,['ansprechpartner','anrede','email','adresse','quellen','unsicherheiten']);
+    changed.push('Kontaktdaten');
+  } else if(si===2){
+    var profileText=handoffString(data,'stichpunkte_roh');
+    if(!profileText||!profileText.trim()) profileText=handoffSummary(data,['kernkompetenzen','it_fokus','ausbildung_praktikum_hinweise','besonderheit','quellen','unsicherheiten']);
+    if(profileText&&profileText.trim()){q.extracted[si]=profileText.trim();f.stichpunkte=profileText.trim();}
+    var competencies=handoffStringList(data.kernkompetenzen);
+    if(competencies.length) q.bausteine.skillmatch=competencies.map(function(v){return '- '+v;}).join('\n');
+    var special=handoffString(data,'besonderheit');
+    if(special&&special.trim()) q.bausteine.firmenbezug=special.trim();
+    changed.push('Firmenprofil');
+  } else if(si===3){
+    var draftKeys=['standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'];
+    draftKeys.forEach(function(key){
+      if(handoffOwn(data,key)){
+        q.pdfDraft[key]=String(data[key]===null?'':data[key]);
+        q.pdfDraft._set[key]=true;
+        changed.push(key);
+      }
+    });
+    if(handoffOwn(data,'firmenspezifischerSatz')&&String(data.firmenspezifischerSatz||'').trim()) f.anschreibenSatz=String(data.firmenspezifischerSatz).trim();
+    q.extracted[si]=handoffSummary(data,draftKeys.concat(['notizen','quellenOderAnnahmen']));
+  } else if(si===4){
+    var ppKeys=['umschulung','ausbildungsberuf','zeitraum','pflichtpraktikum','unternehmen_standort'];
+    var fcKeys=['firma_existiert','adresse_geprueft','taetigkeitsfeld_passend'];
+    var pp={},fc={};
+    ppKeys.forEach(function(key){if(data.pflichtpruefung&&typeof data.pflichtpruefung[key]==='boolean') pp[key]=data.pflichtpruefung[key];});
+    fcKeys.forEach(function(key){if(data.faktencheck&&typeof data.faktencheck[key]==='boolean') fc[key]=data.faktencheck[key];});
+    q.checkResult={
+      pflichtpruefung:pp,
+      faktencheck:fc,
+      urteil:String(data.urteil||''),
+      korrekturen:handoffStringList(data.korrekturen),
+      quellen:handoffStringList(data.quellen),
+      kurzbegruendung:String(data.kurzbegruendung||'')
+    };
+    q.extracted[si]=checkResultSummary(q.checkResult);
+    changed.push('Prüfergebnis');
+  } else if(si===6){
+    q.extracted[si]=handoffSummary(data,['betreff','empfaengerEmail','anrede','mailtext','notizen']);
+    changed.push('Mailtext');
+  } else if(si===7){
+    var applicationDate=validIsoDate(data.bewerbungsDatum);
+    if(applicationDate){f.bewerbungsDatum=applicationDate;changed.push('Bewerbungsdatum');}
+    if(String(data.statusUpdate||'').trim().toLowerCase()==='versendet'){f.status='versendet';changed.push('Status versendet');}
+    q.extracted[si]=handoffSummary(data,['bewerbungsDatum','trackingText','statusUpdate','notizen']);
+    changed.push('Tracking-Eintrag');
+  }
+
+  var incomingSteps=Array.isArray(parsed.nextSteps)?parsed.nextSteps:[];
+  var nowIso=new Date().toISOString(), tasks=0;
+  incomingSteps.forEach(function(step){
+    if(!step||typeof step!=='object') return;
+    var title=String(step.title||'').trim(), details=String(step.details||'').trim();
+    if(!title&&!details) return;
+    var source=String(step.source||'').trim()==='email'?'email':'quest-handoff';
+    f.nextSteps.push(Object.assign(defaultNextStep(),{
+      id:uid(), title:title, details:details, source:source, sourceDate:'',
+      dueDate:validIsoDate(step.dueDate), status:normalizeNextStepStatus(step.status),
+      priority:normalizeNextStepPriority(step.priority), createdAt:nowIso, updatedAt:nowIso
+    }));
+    tasks++;
+  });
+  q.stepStatus[si]='geprüft';
+  if(!await save()) throw new Error('Daten wurden übernommen, konnten aber nicht sicher gespeichert werden. Bitte Emergency-Backup exportieren.');
+  renderDB(); renderQuestOverview(); renderNextStepsPanel();
+  openSteps[si]=true; renderQuestSteps(f); updateStatusStrip(f); renderBausteine(f); updateMomentumModule(f); updateMobileBar(f); drawMap();
+  if(si===3) renderPdfDraftSection(f);
+  return {firm:f,stepIndex:si,changed:changed,tasks:tasks};
+}
+async function importQuestStepHandoffFromStep(si){
+  var ta=document.getElementById('handoff-json-'+si);
+  var raw=ta?ta.value.trim():'';
+  if(!raw){toast('Bitte Handoff-JSON einfügen.');return;}
+  try{
+    var result=await importQuestStepHandoffJson(raw);
+    toast('Handoff importiert: '+STEPS[result.stepIndex].name+(result.tasks?' · '+result.tasks+' Next Step(s)':'' )+' ✓',5000);
+  }catch(e){toast('Handoff-Import fehlgeschlagen: '+String(e.message||e),6500);}
 }
 
 function getNextStep(f) {
@@ -2126,7 +2391,7 @@ function updateMobileBar(f) {
 }
 
 function mbaCopy() {
-  // Copy prompt of currently open step, or next step
+  // Copy the Startchat prompt of the currently open step, or next step.
   var f=getFirm(activeQuestFirmId); if(!f) return;
   // find open step
   var openIdx=null;
@@ -3083,6 +3348,27 @@ function renderQuestSteps(f){
     if(i===6) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(6)">Mail übernommen</button>'
       +'<button class="btn btn-q btn-sm" onclick="markEmailSent()">E-Mail versendet</button>';
     if(i===7) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(7)">Tracking eingetragen</button>';
+    var handoffStep=isHandoffStep(i);
+    var chatLink=(f.quest.stepChatLinks[i]||{}).url||'';
+    var chatLinkUI='<div class="dvd"></div><div class="rz-stage">'
+      +'<div class="rz-stage-head"><span>Arbeitschat-Link</span></div>'
+      +'<div class="rz-hint">Manueller Verweis auf den Chat, in dem dieser Schritt bearbeitet wurde.</div>'
+      +'<input id="step-chat-link-'+i+'" type="url" inputmode="url" placeholder="Chat-Link hier einfügen …" value="'+esc(chatLink)+'">'
+      +'<div class="arow" style="margin-top:6px;">'
+      +'<button class="btn btn-v btn-sm" onclick="saveStepChatLink('+i+',\''+f.id+'\')">Speichern</button>'
+      +(chatLink?'<button class="btn btn-w btn-sm" onclick="openStepChatLink('+i+',\''+f.id+'\')">Öffnen ↗</button><button class="btn btn-w btn-sm" onclick="copyStepChatLink('+i+',\''+f.id+'\',this)">Kopieren</button>':'')
+      +'</div></div>';
+    var handoffImported=handoffStep&&f.quest.normalizedReturns[i]&&f.quest.extracted[i]
+      ?'<div class="exblk vis"><div class="exl">◆ Importierter Handoff</div><div class="exc">'+esc(f.quest.extracted[i])+'</div></div>'
+      :'';
+    var handoffUI=handoffStep
+      ?'<div class="dvd"></div><div class="rz-stage rz-s3">'
+        +'<div class="rz-stage-head"><span>Handoff-Reimport</span><span class="rz-stage-badge rz-badge-ok">JSON</span></div>'
+        +'<div class="rz-hint">Am Ende des Arbeitschats den Handoff-Prompt senden und das zurückgegebene JSON hier importieren.</div>'
+        +'<textarea id="handoff-json-'+i+'" rows="4" placeholder="Handoff-JSON für '+esc(s.name)+' einfügen …"></textarea>'
+        +'<div class="arow" style="margin-top:6px;"><button class="btn btn-v btn-sm" onclick="importQuestStepHandoffFromStep('+i+')">📥 Handoff-JSON importieren</button></div>'
+        +handoffImported+'</div>'
+      :'';
     var rz='';
     if(s.rt){
       var hasRaw=!!(f.quest.rawReturns[i]||f.quest.returns[i]);
@@ -3166,10 +3452,11 @@ function renderQuestSteps(f){
       +'<div class="snote">'+esc(s.note)+'</div>'+hint
       +'<div class="pscr" id="sp-'+i+'">'+promptHTML(getPrompt(i,f))+'</div>'
       +'<div class="arow">'
-      +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 Prompt kopieren</button>'
+      +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 '+(handoffStep?'Startchat-Prompt kopieren':'Prompt kopieren')+'</button>'
+      +(handoffStep?'<button class="btn btn-m btn-sm" id="copy-handoff-'+i+'" onclick="copyHandoffPrompt('+i+',\''+f.id+'\',this)">📦 Handoff-Prompt kopieren</button>':'')
       +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
       +doneBtn+quickBtns
-      +'</div>'+rz
+      +'</div>'+chatLinkUI+handoffUI+rz
       +'</div></div>';
   });
   document.getElementById('qd-steps').innerHTML=html;
@@ -3882,6 +4169,19 @@ function pickBetterDate(a,b){
   return a>b?a:b;
 }
 
+function mergeStepChatLink(localLink, remoteLink){
+  var l=localLink&&typeof localLink==='object'?localLink:{url:typeof localLink==='string'?localLink:'',updatedAt:''};
+  var r=remoteLink&&typeof remoteLink==='object'?remoteLink:{url:typeof remoteLink==='string'?remoteLink:'',updatedAt:''};
+  var lu=String(l.url||''), ru=String(r.url||'');
+  var lt=String(l.updatedAt||''), rt=String(r.updatedAt||'');
+  if(!localLink) return {url:ru,updatedAt:rt};
+  if(!remoteLink) return {url:lu,updatedAt:lt};
+  if(lu===ru) return {url:lu,updatedAt:pickBetterDate(lt,rt)};
+  if(lt&&rt) return rt>lt?{url:ru,updatedAt:rt}:{url:lu,updatedAt:lt};
+  if(lu) return {url:lu,updatedAt:lt};
+  return {url:ru,updatedAt:rt};
+}
+
 function mergeQuest(localQ, remoteQ){
   var l=ensureQuestDefaults(localQ), r=ensureQuestDefaults(remoteQ);
   var q=defaultQuest();
@@ -3907,6 +4207,8 @@ function mergeQuest(localQ, remoteQ){
     var ls=l.stepStatus[k]||'offen', rs=r.stepStatus[k]||'offen';
     q.stepStatus[k]=STEP_STATUSES[Math.max(STEP_STATUSES.indexOf(ls),STEP_STATUSES.indexOf(rs),0)]||rs||ls;
   });
+  var chatLinkKeys=Object.keys(l.stepChatLinks||{}).concat(Object.keys(r.stepChatLinks||{}));
+  chatLinkKeys.forEach(function(k){ q.stepChatLinks[k]=mergeStepChatLink(l.stepChatLinks[k],r.stepChatLinks[k]); });
   q.bausteine = Object.assign({}, l.bausteine||{}, r.bausteine||{});
   BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
   q.pdfDraft = defaultPdfDraft();
