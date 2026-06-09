@@ -304,6 +304,7 @@ textarea{resize:vertical;min-height:80px;}
 }
 .ts-p{background:rgba(26,188,156,.12);color:var(--teal);border-color:var(--teal);}
 .ts-g{background:rgba(155,89,182,.12);color:var(--purple-light);border-color:var(--purple);}
+.ts-a{background:rgba(52,152,219,.12);color:var(--blue);border-color:var(--blue);}
 .chev{font-size:14px;color:var(--ink-dim);transition:transform .15s;flex-shrink:0;}
 .chev.open{transform:rotate(90deg);}
 .sbody{display:none;padding:12px 14px 14px;border-top:1px solid var(--border);}
@@ -500,6 +501,11 @@ textarea{resize:vertical;min-height:80px;}
 
 /* === STRUCTURAL STEP TWO-STAGE UI === */
 .rzone-structural{margin-top:12px;}
+.legacy-cleanup{margin-top:10px;border:1px solid var(--border);border-radius:7px;background:rgba(0,0,0,.12);}
+.legacy-cleanup summary{cursor:pointer;padding:9px 12px;color:var(--ink-light);font-size:11px;font-weight:800;font-family:var(--body);}
+.legacy-cleanup[open] summary{border-bottom:1px solid var(--border);}
+.legacy-cleanup-body{padding:10px 12px 4px;}
+.app-step-preview{font-family:monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;color:var(--ink);}
 .rz-stage{
   background:rgba(0,0,0,.18);border:1px solid var(--border);border-radius:7px;
   padding:10px 12px;margin-bottom:8px;
@@ -1998,6 +2004,26 @@ function buildPdfFileName(firm){
   var location=normalizePdfFileNamePart(getFirmLocation(firm),'Ort');
   return name+'_Bewerbung_FIAE-Pflichtpraktikum_'+company+'_'+location+'.pdf';
 }
+function getTrackingCompanyLocation(firm){
+  firm=firm||{};
+  var company=String(firm.name||'').trim();
+  var contact=firm.quest&&firm.quest.contact||{};
+  var address=String(firm.adresse||contact.adresse||'').replace(/\r/g,'').trim();
+  if(address){
+    var lines=address.split('\n').map(function(line){return line.trim();}).filter(Boolean);
+    var postalLine=lines.find(function(line){return /\b\d{5}\b/.test(line);});
+    if(postalLine) return [company,postalLine].filter(Boolean).join(',');
+  }
+  var fallbackLocation=String(firm.region||getFirmLocation(firm)||'').trim();
+  if(fallbackLocation==='Ort') fallbackLocation='';
+  return [company,fallbackLocation].filter(Boolean).join(',');
+}
+function buildTrackingTsv(firm){
+  firm=firm||{};
+  var cfg=getCfg()||{};
+  var role=String(cfg.beruf||'Fachinformatiker Anwendungsentwicklung').trim();
+  return [String(firm.bewerbungsDatum||'').trim(),'ja','Initiativbewerbung',getTrackingCompanyLocation(firm),'Praktikum '+role,'nein','nein','nein','nein'].join('\t');
+}
 
 // ================================================================
 // STEPS
@@ -2038,7 +2064,7 @@ var STEPS=[
    structural:true,
    cleanPrompt:function(raw,c){return 'Analysiere dieses Prüfergebnis für '+(c||'[FIRMA]')+' und gib NUR ein strikt parsebares JSON zurück.\nKeine Vorrede, kein Markdown, kein Codeblock, nur JSON.\n\nZielschema:\n{\n  "pflichtpruefung": {\n    "umschulung": true,\n    "ausbildungsberuf": true,\n    "zeitraum": true,\n    "pflichtpraktikum": true,\n    "unternehmen_standort": true\n  },\n  "faktencheck": {\n    "firma_existiert": true,\n    "adresse_geprueft": true,\n    "taetigkeitsfeld_passend": true\n  },\n  "urteil": "✅ BEREIT | ⚠️ KORREKTURBEDARF | ❌ NICHT VERWENDBAR",\n  "korrekturen": ["..."],\n  "quellen": ["https://..."],\n  "kurzbegruendung": "..."\n}\n\nRohergebnis:\n---\n'+(raw||'[PRUEFERGEBNIS EINFÜGEN]')+'\n---\n\nWichtig: Gib ausschließlich gültiges JSON im exakt passenden Schema aus.';},
    prompt:function(c,ext){var as=(ext&&ext[3])?ext[3]:'[ANSCHREIBEN AUS SCHRITT 4]';return 'Prüf-Assistent FIAE. Keine Umformulierungen. Unternehmensangaben per Websuche.\nAnschreiben:\n'+as+'\nUnternehmen: '+(c||'[FIRMA]')+'\n1. Pflichtprüfung: ✅/❌ Umschulung · Ausbildungsberuf · Zeitraum · Pflichtpraktikum · Unternehmen+Standort\n2. Faktencheck (Websuche): Existenz, Adresse, Tätigkeitsfeld\n3. Urteil: ✅ Bereit zum Versand / ⚠️ Korrekturbedarf';}},
-  {phase:'Phase III — Finalisierung',pi:'📜',num:6,tool:'gpt',tl:'ChatGPT',
+  {phase:'Phase III — Finalisierung',pi:'📜',num:6,tool:'app',tl:'App',
    name:'PDF-Dateiname',desc:'Generisch aus Profil, Firma und Ort',
    note:'Wird aus vorhandenen App-Daten erzeugt.',
    rt:null,
@@ -2060,6 +2086,7 @@ var HANDOFF_STEP_INDEXES=[0,1,2,3,4,6,7];
 var QUEST_HANDOFF_TYPE='bewerbungstracker-quest-step-handoff-v1';
 
 function isHandoffStep(si){ return HANDOFF_STEP_INDEXES.indexOf(Number(si))!==-1; }
+function isStepChatLinkRelevant(si){ return [0,1,2,3,4,6,7].indexOf(Number(si))!==-1; }
 function getLegacyStepPrompt(si, f) {
   var s=STEPS[si];
   try { return typeof s.prompt==='function' ? s.prompt(f.name,f.quest.extracted,f.quest.contact,f) : ''; }
@@ -2438,17 +2465,27 @@ function updateMobileBar(f) {
   var ns=getNextStep(f);
   var nextBtn=document.getElementById('mba-next');
   if(nextBtn) nextBtn.textContent=ns?'⚡ '+STEPS[ns.idx].name.slice(0,12):'✓ Fertig';
+  var copyBtn=document.getElementById('mba-copy');
+  if(copyBtn){
+    var copyIdx=getMobileActionStepIndex(f);
+    copyBtn.textContent=copyIdx===5?'📋 Dateiname':(copyIdx===7?'📋 TSV':'📋 Startchat');
+  }
+}
+
+function getMobileActionStepIndex(f){
+  for(var k in openSteps){if(openSteps[k]) return parseInt(k);}
+  var ns=getNextStep(f);
+  return ns?ns.idx:null;
 }
 
 function mbaCopy() {
-  // Copy the Startchat prompt of the currently open step, or next step.
+  // Copy the primary artifact of the currently open step, or next step.
   var f=getFirm(activeQuestFirmId); if(!f) return;
-  // find open step
-  var openIdx=null;
-  for(var k in openSteps){if(openSteps[k]){openIdx=parseInt(k);break;}}
-  if(openIdx===null){var ns=getNextStep(f);if(ns)openIdx=ns.idx;}
+  var openIdx=getMobileActionStepIndex(f);
   if(openIdx===null){toast('Kein Schritt offen');return;}
-  var btn=document.getElementById('copy-prompt-'+openIdx);
+  var btn=document.getElementById('copy-prompt-'+openIdx)||document.getElementById('mba-copy');
+  if(openIdx===5){copyText(buildPdfFileName(f),btn);return;}
+  if(openIdx===7){copyText(buildTrackingTsv(f),btn);return;}
   copyPromptAndSetStatus(openIdx,f.id,btn);
 }
 
@@ -3388,7 +3425,7 @@ function renderQuestSteps(f){
     var done=!!f.quest.done[i];
     var stStatus=f.quest.stepStatus[i]||'offen';
     var stCls={offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[stStatus]||'ss-offen';
-    var tc=s.tool==='perplexity'?'ts-p':'ts-g';
+    var tc=s.tool==='perplexity'?'ts-p':(s.tool==='app'?'ts-a':'ts-g');
     var eu=s.tool==='perplexity'?'https://www.perplexity.ai':'https://chatgpt.com';
     var hint='';
     if(i===3&&f.quest.extracted[2]) hint='<div class="inj-badge">◈ Stichpunkte aus Schritt 3 eingebaut</div>';
@@ -3402,14 +3439,14 @@ function renderQuestSteps(f){
     if(i===7) quickBtns+='<button class="btn btn-t btn-sm" onclick="completeLateStep(7)">Tracking eingetragen</button>';
     var handoffStep=isHandoffStep(i);
     var chatLink=(f.quest.stepChatLinks[i]||{}).url||'';
-    var chatLinkUI='<div class="dvd"></div><div class="rz-stage">'
+    var chatLinkUI=isStepChatLinkRelevant(i)?'<div class="dvd"></div><div class="rz-stage">'
       +'<div class="rz-stage-head"><span>Arbeitschat-Link</span></div>'
       +'<div class="rz-hint">Manueller Verweis auf den Chat, in dem dieser Schritt bearbeitet wurde.</div>'
       +'<input id="step-chat-link-'+i+'" type="url" inputmode="url" placeholder="Chat-Link hier einfügen …" value="'+esc(chatLink)+'">'
       +'<div class="arow" style="margin-top:6px;">'
       +'<button class="btn btn-v btn-sm" onclick="saveStepChatLink('+i+',\''+f.id+'\')">Speichern</button>'
       +(chatLink?'<button class="btn btn-w btn-sm" onclick="openStepChatLink('+i+',\''+f.id+'\')">Öffnen ↗</button><button class="btn btn-w btn-sm" onclick="copyStepChatLink('+i+',\''+f.id+'\',this)">Kopieren</button>':'')
-      +'</div></div>';
+      +'</div></div>':'';
     var handoffImported=handoffStep&&f.quest.normalizedReturns[i]&&f.quest.extracted[i]
       ?'<div class="exblk vis"><div class="exl">◆ Importierter Handoff</div><div class="exc">'+esc(f.quest.extracted[i])+'</div></div>'
       :'';
@@ -3445,6 +3482,8 @@ function renderQuestSteps(f){
       if(s.structural){
         // === TWO-STAGE UI ===
         rz='<div class="dvd"></div><div class="rzone-structural">'
+          +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte/gespeicherte Daten</div>'+exIn+'</div>'
+          +'<details class="legacy-cleanup"><summary>Erweiterter Legacy-Bereinigungspfad</summary><div class="legacy-cleanup-body">'
           // Stage 1 — Raw
           +'<div class="rz-stage rz-s1">'
           +'<div class="rz-stage-head"><span>1 — Rohergebnis</span><span class="rz-stage-badge rz-badge-raw">'+(hasRaw?'✓ vorhanden':'leer')+'</span></div>'
@@ -3476,8 +3515,7 @@ function renderQuestSteps(f){
           +(hasRaw?'<button class="btn btn-d btn-sm" onclick="clearReturn('+i+')">Alles löschen</button>':'')
           +'</div>'
           +'</div>'
-          // Extracted data display
-          +'<div class="exblk'+(hasEx?' vis':'')+'" id="se-'+i+'"><div class="exl">◆ Erkannte/gespeicherte Daten</div>'+exIn+'</div>'
+          +'</div></details>'
           +'</div>';
       } else {
         // === LEGACY SINGLE-STAGE UI ===
@@ -3493,6 +3531,18 @@ function renderQuestSteps(f){
           +'</div>';
       }
     }
+    var appStepUI='';
+    if(i===5){
+      var pdfFileName=buildPdfFileName(f);
+      appStepUI='<div class="app-step-preview" id="pdf-filename-preview-'+i+'">'+esc(pdfFileName)+'</div>'
+        +'<div class="arow"><button class="btn btn-q btn-sm" onclick="copyText(buildPdfFileName(getFirm(\''+f.id+'\')),this)">📋 Dateiname kopieren</button>'+doneBtn+quickBtns+'</div>';
+    } else if(i===7){
+      var trackingTsv=buildTrackingTsv(f);
+      appStepUI='<div class="rz-stage"><div class="rz-stage-head"><span>Google-Sheets-Zeile</span><span class="rz-stage-badge rz-badge-ok">TSV</span></div>'
+        +'<div class="rz-hint">Tab-getrennte Vorschau aus bestätigten App-Daten. Kopieren ändert weder Status noch Firmendaten.</div>'
+        +'<div class="app-step-preview" id="tracking-tsv-preview-'+i+'">'+esc(trackingTsv)+'</div>'
+        +'<button class="btn btn-q btn-sm" onclick="copyText(buildTrackingTsv(getFirm(\''+f.id+'\')),this)">📋 Tracking-TSV kopieren</button></div>';
+    }
     html+='<div class="qstep'+(done?' done':'')+'" id="ss-'+i+'">'
       +'<div class="shead" onclick="toggleStep('+i+')">'
       +'<div class="sgem'+(done?' cl':'')+'" id="sg-'+i+'" onclick="event.stopPropagation();markDone('+i+',this)">'+(done?'✓':(i+1))+'</div>'
@@ -3503,13 +3553,14 @@ function renderQuestSteps(f){
       +'</div>'
       +'<div class="sbody'+(openSteps[i]?' open':'')+'" id="sb-'+i+'">'
       +'<div class="snote">'+esc(s.note)+'</div>'+hint
-      +'<div class="pscr" id="sp-'+i+'">'+promptHTML(getPrompt(i,f))+'</div>'
-      +'<div class="arow">'
-      +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 '+(handoffStep?'Startchat-Prompt kopieren':'Prompt kopieren')+'</button>'
-      +(handoffStep?'<button class="btn btn-m btn-sm" id="copy-handoff-'+i+'" onclick="copyHandoffPrompt('+i+',\''+f.id+'\',this)">📦 Handoff-Prompt kopieren</button>':'')
-      +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
-      +doneBtn+quickBtns
-      +'</div>'+chatLinkUI+handoffUI+rz
+      +appStepUI
+      +(i===5?'':('<div class="pscr" id="sp-'+i+'">'+promptHTML(getPrompt(i,f))+'</div>'
+        +'<div class="arow">'
+        +'<button class="btn btn-q btn-sm" id="copy-prompt-'+i+'" onclick="copyPromptAndSetStatus('+i+',\''+f.id+'\',this)">📋 '+(handoffStep?'Startchat-Prompt kopieren':'Prompt kopieren')+'</button>'
+        +(handoffStep?'<button class="btn btn-m btn-sm" id="copy-handoff-'+i+'" onclick="copyHandoffPrompt('+i+',\''+f.id+'\',this)">📦 Handoff-Prompt kopieren</button>':'')
+        +'<a class="btn btn-w btn-sm" href="'+eu+'" target="_blank" rel="noopener" style="text-decoration:none;">'+esc(s.tl)+' ↗</a>'
+        +doneBtn+quickBtns
+        +'</div>'))+chatLinkUI+handoffUI+rz
       +'</div></div>';
   });
   document.getElementById('qd-steps').innerHTML=html;
