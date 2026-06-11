@@ -541,6 +541,10 @@ textarea{resize:vertical;min-height:80px;}
 .sync-dot.ok{background:var(--green);}
 .sync-dot.err{background:var(--red);}
 .sync-dot.busy{background:var(--gold);animation:pulse 1s infinite;}
+.gist-passphrase-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px;}
+.gist-passphrase-actions .btn{white-space:nowrap;}
+.gist-passphrase-status{font-size:11px;color:var(--red);line-height:1.35;}
+.gist-passphrase-status.active{color:var(--green);}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 </style>
 </head>
@@ -891,7 +895,11 @@ textarea{resize:vertical;min-height:80px;}
         <label>Gist ID</label>
         <input id="gist-id" placeholder="abc123…" oninput="saveGistCfg()"/>
         <label>Sync-Passphrase (nur für diese Sitzung)</label>
-        <input type="password" id="gist-passphrase" placeholder="Passphrase für verschlüsselten Sync" autocomplete="off" oninput="setGistSyncPassphrase(this.value)"/>
+        <input type="password" id="gist-passphrase" placeholder="Passphrase für verschlüsselten Sync" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rememberGistSyncPassphrase();}"/>
+        <div class="gist-passphrase-actions">
+          <button class="btn btn-s btn-sm" type="button" onclick="rememberGistSyncPassphrase()">Für diese Sitzung merken</button>
+          <span class="gist-passphrase-status" id="gist-passphrase-status" role="status" aria-live="polite">Passphrase fehlt — verschlüsselter Sync blockiert</span>
+        </div>
         <div class="notice" style="margin-top:8px;">Die Passphrase bleibt ausschließlich im Arbeitsspeicher und wird weder gespeichert noch exportiert.</div>
         <label>Auto-Sync (30s Debounce nach jeder Änderung)</label>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
@@ -4222,11 +4230,46 @@ function gistGetToken(){ return localStorage.getItem(GIST_TOKEN_KEY)||''; }
 function gistGetId(){ return localStorage.getItem(GIST_ID_KEY)||''; }
 function gistGetAuto(){ return localStorage.getItem(GIST_AUTO_KEY)==='1'; }
 
+function updateGistPassphraseStatus(){
+  var status=document.getElementById('gist-passphrase-status');
+  if(!status) return;
+  var active=!!_gistSyncPassphrase;
+  status.textContent=active?'Passphrase aktiv':'Passphrase fehlt — verschlüsselter Sync blockiert';
+  status.className='gist-passphrase-status'+(active?' active':'');
+}
+function clearGistAutoSyncTimer(){
+  if(!gistAutoSyncTimer) return;
+  clearTimeout(gistAutoSyncTimer);
+  gistAutoSyncTimer=null;
+}
+function gistCheckSyncRequirements(opts){
+  opts=opts||{};
+  var token=gistGetToken(), id=gistGetId(), hasPassphrase=!!_gistSyncPassphrase;
+  var result={ok:false,token:token,id:id,hasPassphrase:hasPassphrase,reason:'config',message:'Nicht konfiguriert'};
+  updateGistPassphraseStatus();
+  if(!hasPassphrase){
+    result.reason='passphrase'; result.message='Passphrase fehlt — verschlüsselter Sync blockiert';
+    clearGistAutoSyncTimer();
+  }else if(token&&id){
+    result.ok=true; result.reason=''; result.message=opts.readyMessage||'Konfiguriert';
+  }
+  if(opts.updateSyncStatus) setSyncStatus(result.message,result.ok,false);
+  return result;
+}
+function rememberGistSyncPassphrase(){
+  var input=document.getElementById('gist-passphrase');
+  _gistSyncPassphrase=input?String(input.value||''):'';
+  if(input) input.value='';
+  var requirements=gistCheckSyncRequirements({updateSyncStatus:true});
+  if(requirements.hasPassphrase) toast('Sync-Passphrase für diese Sitzung übernommen.');
+}
+
 function saveGistCfg(){
   var t=document.getElementById('gist-token'); if(t) localStorage.setItem(GIST_TOKEN_KEY,t.value);
   var i=document.getElementById('gist-id'); if(i) localStorage.setItem(GIST_ID_KEY,i.value);
   var a=document.getElementById('gist-auto'); if(a) localStorage.setItem(GIST_AUTO_KEY,a.checked?'1':'0');
-  setSyncStatus(gistGetToken()&&gistGetId()?'Konfiguriert':'Nicht konfiguriert',!!gistGetToken()&&!!gistGetId(),false);
+  if(!gistGetAuto()) clearGistAutoSyncTimer();
+  gistCheckSyncRequirements({updateSyncStatus:true});
   var fb=document.getElementById('gist-cfg-saved');
   if(fb){
     fb.style.display='block';
@@ -4237,14 +4280,14 @@ function saveGistCfg(){
 function loadGistCfgUI(){
   var t=document.getElementById('gist-token'); if(t) t.value=gistGetToken();
   var i=document.getElementById('gist-id'); if(i) i.value=gistGetId();
-  var p=document.getElementById('gist-passphrase'); if(p) p.value=_gistSyncPassphrase;
+  var p=document.getElementById('gist-passphrase'); if(p) p.value='';
   var a=document.getElementById('gist-auto'); if(a) a.checked=gistGetAuto();
-  setSyncStatus(gistGetToken()&&gistGetId()?'Konfiguriert':'Nicht konfiguriert',!!gistGetToken()&&!!gistGetId(),false);
+  gistCheckSyncRequirements({updateSyncStatus:true});
 }
 function setSyncStatus(msg,ok,busy){
   var dot=document.getElementById('sync-dot');var msgEl=document.getElementById('sync-msg');
   if(!dot||!msgEl) return;
-  dot.className='sync-dot'+(busy?' busy':ok?' ok':gistGetToken()&&gistGetId()?'':' err');
+  dot.className='sync-dot'+(busy?' busy':ok?' ok':' err');
   msgEl.textContent=msg;
 }
 
@@ -4252,10 +4295,6 @@ function githubHeaders(token, includeContentType){
   var h={'Authorization':'token '+token,'Accept':'application/vnd.github+json'};
   if(includeContentType) h['Content-Type']='application/json';
   return h;
-}
-
-function setGistSyncPassphrase(passphrase){
-  _gistSyncPassphrase=String(passphrase||'');
 }
 function utf8Encode(text){ return new TextEncoder().encode(text); }
 function utf8Decode(buffer){ return new TextDecoder('utf-8',{fatal:true}).decode(buffer); }
@@ -4327,8 +4366,13 @@ function gistBuildPayload(syncTs){
 }
 
 function gistAutoSyncDebounced(){
-  if(_syncInProgress||!gistGetAuto()||!gistGetToken()||!gistGetId()) return;
-  if(gistAutoSyncTimer) clearTimeout(gistAutoSyncTimer);
+  if(_syncInProgress||!gistGetAuto()) return;
+  var requirements=gistCheckSyncRequirements({updateSyncStatus:false});
+  if(!requirements.ok){
+    if(requirements.reason==='passphrase') setSyncStatus(requirements.message,false,false);
+    return;
+  }
+  clearGistAutoSyncTimer();
   gistAutoSyncTimer=setTimeout(function(){gistAutoSyncTimer=null;gistSync({mode:'auto',silent:true});},30000);
 }
 
@@ -4565,8 +4609,12 @@ async function gistSync(opts){
   opts=opts||{};
   var silent=!!opts.silent, mode=opts.mode||'sync';
   if(_syncInProgress){ if(!silent) toast('Sync läuft bereits.'); return {skipped:true,reason:'busy'}; }
-  var token=gistGetToken(),id=gistGetId();
-  if(!token||!id){ if(!silent) toast('⚠ Gist nicht konfiguriert!'); setSyncStatus('Nicht konfiguriert',false,false); return {skipped:true,reason:'config'}; }
+  var requirements=gistCheckSyncRequirements({updateSyncStatus:true});
+  if(!requirements.ok){
+    if(!silent) toast(requirements.reason==='passphrase'?'⚠ Passphrase fehlt — verschlüsselter Sync blockiert':'⚠ Gist nicht konfiguriert!');
+    return {skipped:true,reason:requirements.reason};
+  }
+  var token=requirements.token,id=requirements.id;
   _syncInProgress=true;
   setSyncStatus('Synchronisiere …',true,true);
   try{
