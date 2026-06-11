@@ -130,6 +130,10 @@ function createMigrationHarness(options = {}) {
   const migration = createMigrationHarness();
   assert.deepStrictEqual(await migration.run(), {migrated:true});
   const state = migration.inspect();
+  const confirmText = state.calls.find(([name]) => name === 'confirm')[1];
+  assert(confirmText.includes('Remote-Gist enthält Legacy-Klartextdaten.'), 'Confirm muss vor Legacy-Klartext warnen');
+  assert(confirmText.includes('Vor Migration wird ein Emergency-Backup exportiert.'), 'Confirm muss den Emergency-Backup-Export ankündigen');
+  assert(confirmText.includes('erst nach Bestätigung fortgesetzt'), 'Confirm muss erklären, dass die Migration erst nach Bestätigung fortgesetzt wird');
   assert.strictEqual(state.downloaded, state.initialJson, 'Recovery-Download muss den unveränderten Runtime-State enthalten');
   assert.strictEqual(state.stored, state.initialJson, 'LS_EMERGENCY muss eine serialisierte Kopie des unveränderten Runtime-State enthalten');
   const order = state.calls.map(([name]) => name);
