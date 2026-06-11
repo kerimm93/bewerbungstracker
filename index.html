@@ -4258,12 +4258,14 @@ function setGistSyncPassphrase(passphrase){
   _gistSyncPassphrase=String(passphrase||'');
 }
 function utf8Encode(text){ return new TextEncoder().encode(text); }
+function utf8Decode(buffer){ return new TextDecoder('utf-8',{fatal:true}).decode(buffer); }
 function arrayBufferToBase64(buffer){
   var bytes=new Uint8Array(buffer), binary='';
   for(var i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 function base64ToArrayBuffer(base64){
+  if(typeof base64!=='string'||!base64||base64.length%4!==0||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) throw new Error('Ungültige Base64-Daten');
   var binary=atob(base64), bytes=new Uint8Array(binary.length);
   for(var i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
   return bytes.buffer;
@@ -4274,8 +4276,34 @@ async function gistDeriveEncryptionKey(passphrase,salt){
   );
   return crypto.subtle.deriveKey(
     {name:'PBKDF2',salt:salt,iterations:GIST_KDF_ITERATIONS,hash:'SHA-256'},
-    keyMaterial,{name:GIST_CIPHER,length:256},false,['encrypt']
+    keyMaterial,{name:GIST_CIPHER,length:256},false,['encrypt','decrypt']
   );
+}
+function gistValidateEncryptedEnvelope(envelope){
+  if(!envelope||typeof envelope!=='object'||Array.isArray(envelope)) throw new Error('Verschlüsseltes Gist-Envelope ist ungültig');
+  if(envelope.type!==GIST_ENVELOPE_TYPE||envelope.app!==GIST_ENVELOPE_APP||envelope.version!==1) throw new Error('Verschlüsseltes Gist-Envelope wird nicht unterstützt');
+  if(typeof envelope.exported!=='string'||!envelope.exported) throw new Error('Envelope-Zeitstempel fehlt');
+  var params=envelope.crypto;
+  if(!params||typeof params!=='object'||Array.isArray(params)||params.alg!==GIST_CIPHER||params.kdf!==GIST_KDF||params.iterations!==GIST_KDF_ITERATIONS) throw new Error('Envelope-Kryptoparameter werden nicht unterstützt');
+  var salt=base64ToArrayBuffer(params.salt), iv=base64ToArrayBuffer(params.iv), ciphertext=base64ToArrayBuffer(envelope.ciphertext);
+  if(salt.byteLength!==16) throw new Error('Envelope-Salt muss 16 Byte lang sein');
+  if(iv.byteLength!==12) throw new Error('Envelope-IV muss 12 Byte lang sein');
+  if(ciphertext.byteLength<17) throw new Error('Envelope-Ciphertext ist ungültig');
+  return {salt:salt,iv:iv,ciphertext:ciphertext};
+}
+async function gistDecryptEnvelope(envelope){
+  if(!_gistSyncPassphrase) throw new Error('Sync-Passphrase fehlt');
+  var encrypted=gistValidateEncryptedEnvelope(envelope);
+  var key=await gistDeriveEncryptionKey(_gistSyncPassphrase,encrypted.salt);
+  var plaintext;
+  try{ plaintext=await crypto.subtle.decrypt({name:GIST_CIPHER,iv:encrypted.iv},key,encrypted.ciphertext); }
+  catch(e){ throw new Error('Gist-Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert'); }
+  var payload;
+  try{ payload=JSON.parse(utf8Decode(plaintext)); }
+  catch(e){ throw new Error('Entschlüsselter Gist-Payload ist kein gültiges JSON'); }
+  if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.version!==6||!Array.isArray(payload.firms)||!Array.isArray(payload.regions)||!payload.cfg||typeof payload.cfg!=='object'||Array.isArray(payload.cfg)) throw new Error('Entschlüsselter Gist-Payload ist ungültig');
+  if(payload.exported!==envelope.exported) throw new Error('Envelope- und Payload-Zeitstempel stimmen nicht überein');
+  return payload;
 }
 async function gistEncryptPayload(payload,syncTs){
   if(!_gistSyncPassphrase) throw new Error('Sync-Passphrase fehlt');
@@ -4497,7 +4525,9 @@ async function gistFetchRemote(token,id){
   if(!file) return null;
   var fullText = await getFullGistFileText(file);
   if(!fullText) return null;
-  return JSON.parse(fullText);
+  var remoteData=JSON.parse(fullText);
+  if(remoteData&&typeof remoteData==='object'&&(remoteData.type===GIST_ENVELOPE_TYPE||remoteData.crypto||remoteData.ciphertext)) return gistDecryptEnvelope(remoteData);
+  return remoteData;
 }
 
 async function gistPushPayload(token,id,silent){
