@@ -63,14 +63,14 @@ const payload = {
   api.setResponse({files:{'fiae_quest_data.json':{content:JSON.stringify(envelope)}}});
   assert.deepStrictEqual(
     await api.fetchRemote('token', 'gist-id'),
-    payload,
-    'gistFetchRemote muss den entschlüsselten Anwendungs-Payload zurückgeben'
+    {kind:'encrypted', payload},
+    'gistFetchRemote muss den entschlüsselten Anwendungs-Payload explizit klassifizieren'
   );
 
   api.setPassphrase('wrong passphrase');
   await assert.rejects(
     api.decrypt(envelope),
-    /Passphrase falsch oder Daten manipuliert/,
+    /Passphrase falsch oder Payload beschädigt/,
     'Eine falsche Passphrase muss an der AES-GCM-Authentifizierung scheitern'
   );
 
@@ -79,7 +79,7 @@ const payload = {
   const ciphertext = new Uint8Array(api.fromBase64(tampered.ciphertext));
   ciphertext[ciphertext.length - 1] ^= 1;
   tampered.ciphertext = api.toBase64(ciphertext);
-  await assert.rejects(api.decrypt(tampered), /Daten manipuliert/);
+  await assert.rejects(api.decrypt(tampered), /Payload beschädigt/);
 
   const invalidMetadata = JSON.parse(JSON.stringify(envelope));
   invalidMetadata.crypto.iterations = 1;
@@ -93,9 +93,25 @@ const payload = {
   api.setResponse({files:{'fiae_quest_data.json':{content:JSON.stringify(plaintextPayload)}}});
   assert.deepStrictEqual(
     await api.fetchRemote('token', 'gist-id'),
-    plaintextPayload,
-    'Vorhandene Klartext-Gists sollen weiterhin importierbar bleiben'
+    {kind:'legacy', payload:plaintextPayload},
+    'Bekannte Klartext-Gists müssen als Legacy klassifiziert werden'
   );
 
-  console.log('Gist envelope encryption/decryption and read path OK');
+  const unsupportedVersion = JSON.parse(JSON.stringify(envelope));
+  unsupportedVersion.version = 2;
+  api.setResponse({files:{'fiae_quest_data.json':{content:JSON.stringify(unsupportedVersion)}}});
+  await assert.rejects(api.fetchRemote('token', 'gist-id'), /Envelope-Version/);
+
+  api.setResponse({files:{'fiae_quest_data.json':{content:JSON.stringify({foo:'bar'})}}});
+  await assert.rejects(api.fetchRemote('token', 'gist-id'), /unbekanntes Format/);
+
+  api.setResponse({files:{'fiae_quest_data.json':{content:'{invalid json'}}});
+  await assert.rejects(api.fetchRemote('token', 'gist-id'), /Passphrase falsch oder Payload beschädigt/);
+
+  const emptyCryptoValue = JSON.parse(JSON.stringify(envelope));
+  emptyCryptoValue.crypto.salt = '';
+  api.setResponse({files:{'fiae_quest_data.json':{content:JSON.stringify(emptyCryptoValue)}}});
+  await assert.rejects(api.fetchRemote('token', 'gist-id'), /leere Kryptodaten/);
+
+  console.log('Gist envelope encryption/decryption and classified read path OK');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
