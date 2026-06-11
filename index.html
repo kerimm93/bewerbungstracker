@@ -4761,7 +4761,7 @@ async function gistSync(opts){
         setSyncStatus('Pull abgebrochen',true,false);
         return {skipped:true,reason:'pull-not-confirmed'};
       }
-      var pullRecovery=createRecoverySnapshot({fileName:'FIAE_Quest_RECOVERY_vor_Gist_Pull_'+today()+'.json'});
+      var pullRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Pull_'+today()+'.json'});
       if(!pullRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Pull konnte weder gespeichert noch exportiert werden');
       if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen');
       setSyncStatus('Heruntergeladen ✓',true,false);
@@ -4772,7 +4772,7 @@ async function gistSync(opts){
       await gistPushPayload(token,id,silent);
       return {pushed:true,reason:'push-new'};
     }
-    var mergeRecovery=createRecoverySnapshot({fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
+    var mergeRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
     if(!mergeRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Merge konnte weder gespeichert noch exportiert werden');
     var localData=gistBuildPayload(S._lastExported||'');
     remoteData = remoteData || {version:6,exported:'',cfg:{},profileTextBlocks:{},regions:[],firms:[],deletedIds:{}};

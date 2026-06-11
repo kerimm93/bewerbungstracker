@@ -86,7 +86,9 @@ const applyApi = new Function('source', `
 
   const syncSource=extractFunction('gistSync');
   assert(syncSource.indexOf("if(!confirm(pullMessage))") < syncSource.indexOf('var pullRecovery=createRecoverySnapshot'));
+  assert(syncSource.includes("createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Pull_'"), 'Pull-Recovery muss auch bei erfolgreichem localStorage-Write heruntergeladen werden');
   assert(syncSource.indexOf('var pullRecovery=createRecoverySnapshot') < syncSource.indexOf('gistApplyData(remoteData'));
+  assert(syncSource.includes("createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'"), 'Merge-Recovery muss auch bei erfolgreichem localStorage-Write heruntergeladen werden');
   assert(syncSource.indexOf('var mergeRecovery=createRecoverySnapshot') < syncSource.indexOf('mergeSyncData(localData, remoteData)'));
   assert(syncSource.includes("remoteResult.kind==='missing'"));
   assert(syncSource.includes('Der gültige Remote-Stand enthält keine Firmen'));
