@@ -1177,6 +1177,8 @@ var gistAutoSyncTimer = null;
 var gistCfgSavedTimer = null;
 var _syncInProgress = false;
 var _gistSyncPassphrase = '';
+var _gistStartupSyncPending = true;
+var _gistStartupSyncPromise = null;
 var _lastPersistError = null;
 var _lastPersistPayloadSize = null;
 var _lastPersistFailedAt = '';
@@ -4256,12 +4258,26 @@ function gistCheckSyncRequirements(opts){
   if(opts.updateSyncStatus) setSyncStatus(result.message,result.ok,false);
   return result;
 }
-function rememberGistSyncPassphrase(){
+async function rememberGistSyncPassphrase(){
   var input=document.getElementById('gist-passphrase');
   _gistSyncPassphrase=input?String(input.value||''):'';
   if(input) input.value='';
   var requirements=gistCheckSyncRequirements({updateSyncStatus:true});
-  if(requirements.hasPassphrase) toast('Sync-Passphrase für diese Sitzung übernommen.');
+  if(!requirements.hasPassphrase) return;
+  toast('Sync-Passphrase für diese Sitzung übernommen.');
+  if(!requirements.ok||!_gistStartupSyncPending) return;
+  var startupResult=await gistStartupSync();
+  if(startupResult&&startupResult.error){
+    toast('Startup-Sync fehlgeschlagen. Passphrase prüfen und erneut übernehmen.');
+    return;
+  }
+  if(_gistStartupSyncPending) return;
+  await seedIfEmpty();
+  renderTabs();
+  renderDBRegionFilter();
+  renderDB();
+  renderQuestOverview();
+  drawMap();
 }
 
 function saveGistCfg(){
@@ -4700,7 +4716,18 @@ async function gistApplyData(data, opts){
 }
 
 function gistStartupSync(){
-  return gistSync({mode:'startup',silent:true});
+  var token=gistGetToken(), id=gistGetId();
+  if(!token||!id){
+    _gistStartupSyncPending=false;
+    return Promise.resolve({skipped:true,reason:'config'});
+  }
+  if(!_gistSyncPassphrase) return Promise.resolve({skipped:true,reason:'passphrase',deferred:true});
+  if(_gistStartupSyncPromise) return _gistStartupSyncPromise;
+  _gistStartupSyncPromise=gistSync({mode:'startup',silent:true}).then(function(result){
+    if(!result||!result.error) _gistStartupSyncPending=false;
+    return result;
+  }).finally(function(){ _gistStartupSyncPromise=null; });
+  return _gistStartupSyncPromise;
 }
 
 // ================================================================
@@ -4742,7 +4769,7 @@ async function init(){
   await load();
   loadCfgUI();
   await gistStartupSync();
-  await seedIfEmpty();
+  if(!_gistStartupSyncPending) await seedIfEmpty();
   renderTabs();
   loadGistCfgUI();
   renderDBRegionFilter();
