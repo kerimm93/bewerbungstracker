@@ -1336,11 +1336,13 @@ function recordPersistError(e, sizeInfo) {
   toast('Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000);
   if(currentTab==='settings') updateInfoPanel();
 }
-async function persistLocalOnly() {
-  // Write the large runtime state to IndexedDB only. Legacy localStorage remains a fallback/backup.
+async function persistLocalOnly(stateToPersist, opts) {
+  // Write a detached state to IndexedDB. Callers may pass a candidate that must not become runtime state before persistence succeeds.
+  var sourceState=arguments.length?stateToPersist:S;
+  opts=opts||{};
   var json, sizeInfo;
   try{
-    json=JSON.stringify(S);
+    json=JSON.stringify(sourceState);
     sizeInfo=getJsonSizeInfo(json);
     await idbSet(IDB_STATE_KEY, normalizeState(JSON.parse(json)));
     try{ localStorage.setItem(IDB_MIGRATED_KEY,'1'); }catch(markerError){ console.warn('Migration marker could not be written',markerError); }
@@ -1352,7 +1354,9 @@ async function persistLocalOnly() {
   }catch(e){
     _idbLastError=e;
     recordPersistError(e,sizeInfo||null);
-    try{ if(json) localStorage.setItem(LS_EMERGENCY,json); }catch(emergencyError){ console.warn('Emergency localStorage write failed',emergencyError); }
+    if(!opts.skipEmergencyFallback){
+      try{ if(json) localStorage.setItem(LS_EMERGENCY,json); }catch(emergencyError){ console.warn('Emergency localStorage write failed',emergencyError); }
+    }
     return false;
   }
 }
@@ -4603,28 +4607,61 @@ async function gistFetchRemote(token,id){
   if(!res.ok) throw new Error('GET HTTP '+res.status);
   var gist = await res.json();
   var file = gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-  if(!file) return {kind:'empty',payload:null};
+  if(!file) return {kind:'missing',payload:null};
   var fullText = await getFullGistFileText(file);
-  if(!fullText) return {kind:'empty',payload:null};
-  var remoteData;
-  try{ remoteData=JSON.parse(fullText); }
-  catch(e){ throw new Error('Remote-Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt'); }
-  var classified=gistClassifyRemoteJson(remoteData);
-  if(classified.kind==='invalid') throw new Error(classified.message);
-  if(classified.kind==='encrypted'){
-    gistValidateEncryptedEnvelope(classified.envelope);
-    return {kind:'encrypted',payload:await gistDecryptEnvelope(classified.envelope)};
+  if(!String(fullText||'').trim()){
+    var emptyError=new Error('Remote-Gist-Datei ist leer oder enthält keinen gültigen Payload');
+    emptyError.remotePayloadInvalid=true;
+    throw emptyError;
   }
-  return classified;
+  try{
+    var remoteData=JSON.parse(fullText);
+    var classified=gistClassifyRemoteJson(remoteData);
+    if(classified.kind==='invalid') throw new Error(classified.message);
+    if(classified.kind==='encrypted'){
+      gistValidateEncryptedEnvelope(classified.envelope);
+      return {kind:'encrypted',payload:await gistDecryptEnvelope(classified.envelope)};
+    }
+    return classified;
+  }catch(e){
+    if(!e.remotePayloadInvalid) e.remotePayloadInvalid=true;
+    if(e instanceof SyntaxError) e.message='Remote-Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt';
+    throw e;
+  }
+}
+
+function createRecoverySnapshot(opts){
+  opts=opts||{};
+  var runtimeJson, runtimeCopy;
+  try{
+    runtimeJson=JSON.stringify(S);
+    runtimeCopy=JSON.parse(runtimeJson);
+  }catch(e){
+    console.error('Recovery snapshot could not be created',e);
+    return {ok:false,persisted:false,exported:false,error:e};
+  }
+  var persisted=false, exported=false, persistError=null, exportError=null;
+  try{
+    localStorage.setItem(LS_EMERGENCY,runtimeJson);
+    persisted=true;
+  }catch(e){
+    persistError=e;
+    console.warn('Recovery snapshot could not be stored in localStorage',e);
+  }
+  if(opts.download || !persisted){
+    try{
+      downloadJson(runtimeCopy,opts.fileName||('FIAE_Quest_RECOVERY_'+today()+'.json'));
+      exported=true;
+    }catch(e){
+      exportError=e;
+      console.warn('Recovery snapshot could not be downloaded',e);
+    }
+  }
+  return {ok:persisted||exported,persisted:persisted,exported:exported,snapshot:runtimeCopy,error:exportError||persistError};
 }
 
 function gistCreateLegacyRecoverySnapshot(){
-  var runtimeJson=JSON.stringify(S);
-  var runtimeCopy=JSON.parse(runtimeJson);
-  downloadJson(runtimeCopy,'FIAE_Quest_RECOVERY_vor_Gist_Migration_'+today()+'.json');
-  try{ localStorage.setItem(LS_EMERGENCY,runtimeJson); }
-  catch(e){ console.warn('Legacy migration emergency snapshot could not be stored',e); }
-  return runtimeCopy;
+  return createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Migration_'+today()+'.json'});
 }
 
 async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
@@ -4632,7 +4669,8 @@ async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
   toast('Remote-Gist enthält Legacy-Klartextdaten.',6000);
   toast('Vor Migration Emergency-Backup exportieren.',6000);
   if(!confirm('Legacy-Klartextdaten jetzt migrieren? Zuerst wird ein Recovery-Snapshot des unveränderten Runtime-State erstellt.')) return {skipped:true,reason:'legacy-not-confirmed'};
-  gistCreateLegacyRecoverySnapshot();
+  var recovery=gistCreateLegacyRecoverySnapshot();
+  if(!recovery.ok) throw new Error('Recovery-Snapshot vor Legacy-Migration konnte weder gespeichert noch exportiert werden');
   var localPayload=gistBuildPayload(S._lastExported||'');
   var merged=mergeSyncData(localPayload,legacyPayload);
   var syncTs=new Date().toISOString();
@@ -4697,22 +4735,46 @@ async function gistSync(opts){
   try{
     var remoteResult;
     try{ remoteResult = await gistFetchRemote(token,id); }
-    catch(e){ setSyncStatus('Abruf-Fehler',false,false); throw new Error('Abruf: '+e.message); }
+    catch(e){
+      setSyncStatus(e.remotePayloadInvalid?'Ungültige Remote-Daten':'Abruf-Fehler',false,false);
+      throw new Error((e.remotePayloadInvalid?'Remote-Payload: ':'Abruf: ')+e.message);
+    }
     if(remoteResult.kind==='legacy'){
       setSyncStatus('Legacy-Klartext erkannt',false,false);
       if(mode==='startup'||mode==='auto') return {skipped:true,reason:'legacy'};
       return await gistMigrateLegacyRemote(token,id,remoteResult.payload,silent);
     }
+    var remoteMissing=remoteResult.kind==='missing';
     var remoteData=remoteResult.payload;
     if(mode==='pull'){
-      if(remoteData){ if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen'); setSyncStatus('Heruntergeladen ✓',true,false); if(!silent) toast('⬇ Daten geladen'); return {pulled:true}; }
-      setSyncStatus('Keine Remote-Datei',true,false); return {skipped:true,reason:'no-remote'};
+      if(remoteMissing){
+        setSyncStatus('Keine Remote-Datei',true,false);
+        if(!silent) toast('Keine Remote-Datei gefunden. Lokale Daten bleiben unverändert.');
+        return {skipped:true,reason:'no-remote'};
+      }
+      var localFirmCount=Array.isArray(S.firms)?S.firms.length:0;
+      var remoteFirmCount=remoteData.firms.length;
+      var pullMessage=localFirmCount>0&&remoteFirmCount===0
+        ?'Der gültige Remote-Stand enthält keine Firmen. Dadurch werden '+localFirmCount+' lokale Firmeneinträge ersetzt. Wirklich fortfahren?'
+        :'Remote-Daten laden? Dabei werden die lokalen Daten durch den Remote-Stand ersetzt.';
+      if(!confirm(pullMessage)){
+        setSyncStatus('Pull abgebrochen',true,false);
+        return {skipped:true,reason:'pull-not-confirmed'};
+      }
+      var pullRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Pull_'+today()+'.json'});
+      if(!pullRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Pull konnte weder gespeichert noch exportiert werden');
+      if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen');
+      setSyncStatus('Heruntergeladen ✓',true,false);
+      if(!silent) toast('⬇ Daten geladen');
+      return {pulled:true};
     }
-    var localData=gistBuildPayload(S._lastExported||'');
-    if(mode==='push' && !remoteData){
+    if(mode==='push' && remoteMissing){
       await gistPushPayload(token,id,silent);
       return {pushed:true,reason:'push-new'};
     }
+    var mergeRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
+    if(!mergeRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Merge konnte weder gespeichert noch exportiert werden');
+    var localData=gistBuildPayload(S._lastExported||'');
     remoteData = remoteData || {version:6,exported:'',cfg:{},profileTextBlocks:{},regions:[],firms:[],deletedIds:{}};
     var localTime=S._lastExported||'';
     var remoteTime=remoteData.exported||'';
@@ -4720,10 +4782,11 @@ async function gistSync(opts){
     try{ mergedData = mergeSyncData(localData, remoteData); }
     catch(e){ setSyncStatus('Merge-Fehler',false,false); throw new Error('Merge: '+e.message); }
     var mergedPayload={version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,profileTextBlocks:mergedData.profileTextBlocks,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds};
+    gistValidateSyncPayload(mergedPayload,'Gist-Merge-Payload');
     var normalizedRemote=normalizePayloadForCompare(remoteData);
     var normalizedMerged=normalizePayloadForCompare(mergedPayload);
     var didChange = stableStringify(normalizePayloadForCompare(localData))!==stableStringify(normalizedMerged);
-    var needsPush = stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
+    var needsPush = remoteMissing || stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
     if(!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Speichern nach Gist-Merge fehlgeschlagen');
     if(!needsPush && !didChange){
       setSyncStatus('Sync ohne Änderungen',true,false);
@@ -4763,18 +4826,18 @@ function gistMerge(){
 
 async function gistApplyData(data, opts){
   opts=opts||{};
-  if(data.firms) S.firms=data.firms.map(function(f){ return ensureFirmDefaults(f); });
-  if(data.regions&&data.regions.length) S.regions=data.regions;
-  if(data.cfg) S.cfg=data.cfg;
-  if(data.profileTextBlocks) S.profileTextBlocks=ensureProfileTextBlocks(data.profileTextBlocks);
-  else S.profileTextBlocks=ensureProfileTextBlocks(S.profileTextBlocks);
-  if(data.deletedIds&&typeof data.deletedIds==='object') S.deletedIds=data.deletedIds;
-  if(!S.deletedIds||typeof S.deletedIds!=='object') S.deletedIds={};
-  S.firms = (S.firms||[]).filter(function(f){ return !isFirmDeleted(f.id); });
-  // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it
-  S._lastExported=data.exported||S._lastExported||'';
-  var persisted=await persistLocalOnly();
-  if(!persisted) return false;
+  gistValidateSyncPayload(data,'Anzuwendender Gist-Payload');
+  var candidate=JSON.parse(JSON.stringify(S));
+  candidate.firms=data.firms.map(function(f){ return ensureFirmDefaults(f); });
+  if(data.regions&&data.regions.length) candidate.regions=data.regions;
+  candidate.cfg=data.cfg;
+  candidate.profileTextBlocks=data.profileTextBlocks?ensureProfileTextBlocks(data.profileTextBlocks):ensureProfileTextBlocks(candidate.profileTextBlocks);
+  candidate.deletedIds=(data.deletedIds&&typeof data.deletedIds==='object')?data.deletedIds:{};
+  candidate.firms=(candidate.firms||[]).filter(function(f){ return !candidate.deletedIds[String(f.id)]; });
+  // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it.
+  candidate._lastExported=data.exported||candidate._lastExported||'';
+  if(!await persistLocalOnly(candidate,{skipEmergencyFallback:true})) return false;
+  S=candidate;
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
     if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); loadProfileTextBlocksUI(); }

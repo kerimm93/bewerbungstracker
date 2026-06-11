@@ -67,6 +67,7 @@ async function runLegacyStartupHarness() {
 }
 
 const migrationSource = [
+  extractFunction('createRecoverySnapshot'),
   extractFunction('gistCreateLegacyRecoverySnapshot'),
   extractFunction('gistMigrateLegacyRemote')
 ].join('\n');
@@ -78,6 +79,7 @@ function createMigrationHarness(options = {}) {
     var S={cfg:{name:'runtime'},regions:[{id:'local'}],firms:[{id:'local-firm'}],deletedIds:{},_lastExported:'old'};
     var initialJson=JSON.stringify(S), calls=[], stored=null, downloaded=null, patched=null;
     var localStorage={setItem:function(key,value){calls.push(['store',key]);stored=value;}};
+    var console={error:function(){},warn:function(){}};
     function today(){return '2026-06-11';}
     function downloadJson(data,name){calls.push(['download',name]);downloaded=JSON.stringify(data);}
     function toast(message){calls.push(['toast',message]);}
