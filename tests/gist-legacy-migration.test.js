@@ -112,6 +112,12 @@ function createMigrationHarness(options = {}) {
 
   const manual = await createSyncHarness('merge');
   assert.strictEqual(manual.calls.filter(([name]) => name === 'migrate').length, 1, 'Manuelle Aktion muss in den Migrationspfad wechseln');
+  const manualMessages = manual.calls.filter(([name]) => name === 'toast').map(([, message]) => message).join(' ');
+  assert(manualMessages.includes('Remote-Gist enthält Legacy-Klartextdaten.'), 'Manuelle Aktion muss vor Legacy-Klartext warnen');
+  assert(manualMessages.includes('Vor Migration Emergency-Backup exportieren.'), 'Manuelle Aktion muss vor der Migration zum Emergency-Backup auffordern');
+  const warningIndex = manual.calls.findIndex(([name, message]) => name === 'toast' && message.includes('Legacy-Klartextdaten'));
+  const migrationIndex = manual.calls.findIndex(([name]) => name === 'migrate');
+  assert(warningIndex >= 0 && warningIndex < migrationIndex, 'Legacy-Hinweise müssen vor dem Migrationspfad angezeigt werden');
 
   const cancelled = createMigrationHarness({confirmed:false});
   assert.deepStrictEqual(await cancelled.run(), {skipped:true,reason:'legacy-not-confirmed'});
@@ -124,6 +130,10 @@ function createMigrationHarness(options = {}) {
   const migration = createMigrationHarness();
   assert.deepStrictEqual(await migration.run(), {migrated:true});
   const state = migration.inspect();
+  const confirmText = state.calls.find(([name]) => name === 'confirm')[1];
+  assert(confirmText.includes('Remote-Gist enthält Legacy-Klartextdaten.'), 'Confirm muss vor Legacy-Klartext warnen');
+  assert(confirmText.includes('Vor Migration wird ein Emergency-Backup exportiert.'), 'Confirm muss den Emergency-Backup-Export ankündigen');
+  assert(confirmText.includes('erst nach Bestätigung fortgesetzt'), 'Confirm muss erklären, dass die Migration erst nach Bestätigung fortgesetzt wird');
   assert.strictEqual(state.downloaded, state.initialJson, 'Recovery-Download muss den unveränderten Runtime-State enthalten');
   assert.strictEqual(state.stored, state.initialJson, 'LS_EMERGENCY muss eine serialisierte Kopie des unveränderten Runtime-State enthalten');
   const order = state.calls.map(([name]) => name);

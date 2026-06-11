@@ -4670,7 +4670,7 @@ function gistCreateLegacyRecoverySnapshot(){
 
 async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
   if(!_gistSyncPassphrase) throw new Error('Passphrase fehlt — Legacy-Migration blockiert');
-  if(!confirm('Legacy-Klartextdaten jetzt migrieren? Zuerst wird ein Recovery-Snapshot des unveränderten Runtime-State erstellt.')) return {skipped:true,reason:'legacy-not-confirmed'};
+  if(!confirm('Remote-Gist enthält Legacy-Klartextdaten. Vor Migration wird ein Emergency-Backup exportiert. Die Migration wird erst nach Bestätigung fortgesetzt.')) return {skipped:true,reason:'legacy-not-confirmed'};
   var recovery=gistCreateLegacyRecoverySnapshot();
   if(!recovery.ok) throw new Error('Recovery-Snapshot vor Legacy-Migration konnte weder gespeichert noch exportiert werden');
   var localPayload=gistBuildPayload(S._lastExported||'');
@@ -4744,6 +4744,10 @@ async function gistSync(opts){
         setSyncStatus('Legacy-Klartext erkannt',false,false);
         return {skipped:true,reason:'legacy'};
       }
+      var legacyWarning='Remote-Gist enthält Legacy-Klartextdaten.';
+      var legacyBackupWarning='Vor Migration Emergency-Backup exportieren.';
+      setSyncStatus(legacyWarning,false,false);
+      if(!silent) toast(legacyWarning+' '+legacyBackupWarning,8000);
       return await gistMigrateLegacyRemote(token,id,remoteResult.payload,silent);
     }
     var remoteMissing=remoteResult.kind==='missing';

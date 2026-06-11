@@ -29,6 +29,7 @@ const api = new Function('webCrypto', `
   var GIST_KDF_ITERATIONS=250000;
   var _gistSyncPassphrase='correct horse battery staple';
   var responsePayload=null;
+  var S={firms:[{id:'runtime-firm'}],_lastExported:'runtime-ts'};
   function githubHeaders(){ return {}; }
   async function fetch(){
     return {ok:true,json:async function(){return responsePayload;}};
@@ -41,6 +42,7 @@ const api = new Function('webCrypto', `
     fetchRemote:gistFetchRemote,
     setPassphrase:function(value){_gistSyncPassphrase=value;},
     setResponse:function(value){responsePayload=value;},
+    getState:function(){return JSON.parse(JSON.stringify(S));},
     toBase64:arrayBufferToBase64,
     fromBase64:base64ToArrayBuffer
   };
@@ -68,11 +70,13 @@ const payload = {
   );
 
   api.setPassphrase('wrong passphrase');
+  const runtimeStateBeforeDecryptError = api.getState();
   await assert.rejects(
     api.decrypt(envelope),
     /Passphrase falsch oder Payload beschädigt/,
     'Eine falsche Passphrase muss an der AES-GCM-Authentifizierung scheitern'
   );
+  assert.deepStrictEqual(api.getState(), runtimeStateBeforeDecryptError, 'Ein Entschlüsselungsfehler darf S nicht verändern');
 
   api.setPassphrase('correct horse battery staple');
   const tampered = JSON.parse(JSON.stringify(envelope));
