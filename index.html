@@ -4744,6 +4744,10 @@ async function gistSync(opts){
         setSyncStatus('Legacy-Klartext erkannt',false,false);
         return {skipped:true,reason:'legacy'};
       }
+      var legacyWarning='Remote-Gist enthält Legacy-Klartextdaten.';
+      var legacyBackupWarning='Vor Migration Emergency-Backup exportieren.';
+      setSyncStatus(legacyWarning,false,false);
+      if(!silent) toast(legacyWarning+' '+legacyBackupWarning,8000);
       return await gistMigrateLegacyRemote(token,id,remoteResult.payload,silent);
     }
     var remoteMissing=remoteResult.kind==='missing';

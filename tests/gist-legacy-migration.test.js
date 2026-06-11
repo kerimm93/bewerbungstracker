@@ -112,6 +112,12 @@ function createMigrationHarness(options = {}) {
 
   const manual = await createSyncHarness('merge');
   assert.strictEqual(manual.calls.filter(([name]) => name === 'migrate').length, 1, 'Manuelle Aktion muss in den Migrationspfad wechseln');
+  const manualMessages = manual.calls.filter(([name]) => name === 'toast').map(([, message]) => message).join(' ');
+  assert(manualMessages.includes('Remote-Gist enthält Legacy-Klartextdaten.'), 'Manuelle Aktion muss vor Legacy-Klartext warnen');
+  assert(manualMessages.includes('Vor Migration Emergency-Backup exportieren.'), 'Manuelle Aktion muss vor der Migration zum Emergency-Backup auffordern');
+  const warningIndex = manual.calls.findIndex(([name, message]) => name === 'toast' && message.includes('Legacy-Klartextdaten'));
+  const migrationIndex = manual.calls.findIndex(([name]) => name === 'migrate');
+  assert(warningIndex >= 0 && warningIndex < migrationIndex, 'Legacy-Hinweise müssen vor dem Migrationspfad angezeigt werden');
 
   const cancelled = createMigrationHarness({confirmed:false});
   assert.deepStrictEqual(await cancelled.run(), {skipped:true,reason:'legacy-not-confirmed'});
