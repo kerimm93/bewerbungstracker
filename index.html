@@ -4768,33 +4768,29 @@ async function gistSync(opts){
       if(!silent) toast('⬇ Daten geladen');
       return {pulled:true};
     }
-    if(mode==='push' && remoteMissing){
-      await gistPushPayload(token,id,silent);
-      return {pushed:true,reason:'push-new'};
-    }
-    var mergeRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
-    if(!mergeRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Merge konnte weder gespeichert noch exportiert werden');
-    var localData=gistBuildPayload(S._lastExported||'');
-    remoteData = remoteData || {version:6,exported:'',cfg:{},profileTextBlocks:{},regions:[],firms:[],deletedIds:{}};
-    var localTime=S._lastExported||'';
+    var localData=JSON.parse(JSON.stringify(gistBuildPayload(S._lastExported||'')));
+    remoteData=JSON.parse(JSON.stringify(remoteData||{version:6,exported:'',cfg:{},profileTextBlocks:{},regions:[],firms:[],deletedIds:{}}));
+    var localTime=localData.exported||'';
     var remoteTime=remoteData.exported||'';
     var mergedData;
     try{ mergedData = mergeSyncData(localData, remoteData); }
     catch(e){ setSyncStatus('Merge-Fehler',false,false); throw new Error('Merge: '+e.message); }
-    var mergedPayload={version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,profileTextBlocks:mergedData.profileTextBlocks,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds};
+    var mergedPayload=JSON.parse(JSON.stringify({version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,profileTextBlocks:mergedData.profileTextBlocks,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds}));
     gistValidateSyncPayload(mergedPayload,'Gist-Merge-Payload');
+    var normalizedLocal=normalizePayloadForCompare(localData);
     var normalizedRemote=normalizePayloadForCompare(remoteData);
     var normalizedMerged=normalizePayloadForCompare(mergedPayload);
-    var didChange = stableStringify(normalizePayloadForCompare(localData))!==stableStringify(normalizedMerged);
-    var needsPush = remoteMissing || stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
-    if(!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Speichern nach Gist-Merge fehlgeschlagen');
-    if(!needsPush && !didChange){
+    var didChange=stableStringify(normalizedLocal)!==stableStringify(normalizedMerged);
+    var needsPush=remoteMissing||stableStringify(normalizedRemote)!==stableStringify(normalizedMerged);
+    if(!needsPush&&!didChange){
       setSyncStatus('Sync ohne Änderungen',true,false);
       if(!silent&&mode!=='auto') toast('Sync: keine Änderungen');
-      renderDB(); drawMap(); renderQuestOverview(); if(currentTab==='settings') updateInfoPanel();
       return {noop:true};
     }
-    if(needsPush || mode==='push'){
+    var mergeRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
+    if(!mergeRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Merge konnte weder gespeichert noch exportiert werden');
+    if(didChange&&!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Speichern nach Gist-Merge fehlgeschlagen');
+    if(needsPush){
       try{ await gistPushPayload(token,id,silent); }
       catch(e){ setSyncStatus('Push-Fehler',false,false); throw new Error('Push: '+e.message); }
       if(!await gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Push fehlgeschlagen');
