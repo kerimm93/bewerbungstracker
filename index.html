@@ -1324,7 +1324,7 @@ async function migrateFromLocalStorageToIndexedDB() {
     return false;
   }
 }
-function recordPersistError(e, sizeInfo) {
+function recordPersistError(e, sizeInfo, opts) {
   _lastPersistError={
     label:getStorageErrorLabel(e),
     name:e&&e.name?String(e.name):'Error',
@@ -1333,7 +1333,7 @@ function recordPersistError(e, sizeInfo) {
   _lastPersistPayloadSize=sizeInfo||null;
   _lastPersistFailedAt=new Date().toISOString();
   console.error('IndexedDB persist failed',e);
-  toast('Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000);
+  if(!opts||!opts.suppressToast) toast('Speichern fehlgeschlagen – bitte Emergency-Backup exportieren.',6000);
   if(currentTab==='settings') updateInfoPanel();
 }
 async function persistLocalOnly(stateToPersist, opts) {
@@ -1353,7 +1353,7 @@ async function persistLocalOnly(stateToPersist, opts) {
     return true;
   }catch(e){
     _idbLastError=e;
-    recordPersistError(e,sizeInfo||null);
+    recordPersistError(e,sizeInfo||null,opts);
     if(!opts.skipEmergencyFallback){
       try{ if(json) localStorage.setItem(LS_EMERGENCY,json); }catch(emergencyError){ console.warn('Emergency localStorage write failed',emergencyError); }
     }
@@ -4366,10 +4366,10 @@ async function gistDecryptEnvelope(envelope){
   var key=await gistDeriveEncryptionKey(_gistSyncPassphrase,encrypted.salt);
   var plaintext;
   try{ plaintext=await crypto.subtle.decrypt({name:GIST_CIPHER,iv:encrypted.iv},key,encrypted.ciphertext); }
-  catch(e){ throw new Error('Gist konnte nicht entschlüsselt werden: Passphrase falsch oder Payload beschädigt'); }
+  catch(e){ throw new Error('Entschlüsselung fehlgeschlagen – Passphrase falsch oder Payload beschädigt'); }
   var payload;
   try{ payload=JSON.parse(utf8Decode(plaintext)); }
-  catch(e){ throw new Error('Entschlüsselter Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt'); }
+  catch(e){ throw new Error('Entschlüsselung fehlgeschlagen – Passphrase falsch oder Payload beschädigt'); }
   gistValidateSyncPayload(payload,'Entschlüsselter Gist-Payload');
   if(payload.exported!==envelope.exported) throw new Error('Envelope- und Payload-Zeitstempel stimmen nicht überein');
   return payload;
@@ -4586,8 +4586,10 @@ function mergeSyncData(localData, remoteData){
 async function getFullGistFileText(file){
   if(!file) return '';
   if(!file.truncated) return file.content||'';
-  var rr = await fetch(file.raw_url, {headers:{'Accept':'application/vnd.github.raw'}});
-  if(!rr.ok) throw new Error('Truncation-Raw HTTP '+rr.status);
+  var rr;
+  try{ rr=await fetch(file.raw_url,{headers:{'Accept':'application/vnd.github.raw'}}); }
+  catch(e){ throw new Error('Gist-GET / Netzwerkfehler'); }
+  if(!rr.ok) throw new Error('Gist-GET HTTP '+rr.status);
   return rr.text();
 }
 
@@ -4603,31 +4605,33 @@ function gistClassifyRemoteJson(remoteData){
 }
 
 async function gistFetchRemote(token,id){
-  var res = await fetch('https://api.github.com/gists/'+id,{headers:githubHeaders(token)});
-  if(!res.ok) throw new Error('GET HTTP '+res.status);
-  var gist = await res.json();
-  var file = gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
+  var res;
+  try{ res=await fetch('https://api.github.com/gists/'+id,{headers:githubHeaders(token)}); }
+  catch(e){ throw new Error('Gist-GET / Netzwerkfehler'); }
+  if(!res.ok) throw new Error('Gist-GET HTTP '+res.status);
+  var gist;
+  try{ gist=await res.json(); }
+  catch(e){ throw new Error('Gist-GET / Fehlerhaftes JSON'); }
+  if(!gist||typeof gist!=='object'||Array.isArray(gist)||!gist.files||typeof gist.files!=='object'||Array.isArray(gist.files)) throw new Error('Gist-GET / Unerwartetes Payload-Format');
+  var file=gist.files[GIST_FILE]||Object.values(gist.files)[0];
   if(!file) return {kind:'missing',payload:null};
-  var fullText = await getFullGistFileText(file);
-  if(!String(fullText||'').trim()){
-    var emptyError=new Error('Remote-Gist-Datei ist leer oder enthält keinen gültigen Payload');
-    emptyError.remotePayloadInvalid=true;
-    throw emptyError;
-  }
-  try{
-    var remoteData=JSON.parse(fullText);
-    var classified=gistClassifyRemoteJson(remoteData);
-    if(classified.kind==='invalid') throw new Error(classified.message);
-    if(classified.kind==='encrypted'){
-      gistValidateEncryptedEnvelope(classified.envelope);
-      return {kind:'encrypted',payload:await gistDecryptEnvelope(classified.envelope)};
+  var fullText=await getFullGistFileText(file);
+  if(!String(fullText||'').trim()) throw new Error('Unerwartetes Payload-Format – Remote-Gist-Datei ist leer');
+  var remoteData;
+  try{ remoteData=JSON.parse(fullText); }
+  catch(e){ throw new Error('Fehlerhaftes JSON'); }
+  var classified=gistClassifyRemoteJson(remoteData);
+  if(classified.kind==='invalid') throw new Error('Unerwartetes Payload-Format – '+classified.message);
+  if(classified.kind==='encrypted'){
+    try{ gistValidateEncryptedEnvelope(classified.envelope); }
+    catch(e){ throw new Error('Unerwartetes Payload-Format – '+(e.message||String(e))); }
+    try{ return {kind:'encrypted',payload:await gistDecryptEnvelope(classified.envelope)}; }
+    catch(e){
+      if((e.message||'').indexOf('Entschlüsselung fehlgeschlagen')===0) throw e;
+      throw new Error('Unerwartetes Payload-Format – '+(e.message||String(e)));
     }
-    return classified;
-  }catch(e){
-    if(!e.remotePayloadInvalid) e.remotePayloadInvalid=true;
-    if(e instanceof SyntaxError) e.message='Remote-Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt';
-    throw e;
   }
+  return classified;
 }
 
 function createRecoverySnapshot(opts){
@@ -4666,8 +4670,6 @@ function gistCreateLegacyRecoverySnapshot(){
 
 async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
   if(!_gistSyncPassphrase) throw new Error('Passphrase fehlt — Legacy-Migration blockiert');
-  toast('Remote-Gist enthält Legacy-Klartextdaten.',6000);
-  toast('Vor Migration Emergency-Backup exportieren.',6000);
   if(!confirm('Legacy-Klartextdaten jetzt migrieren? Zuerst wird ein Recovery-Snapshot des unveränderten Runtime-State erstellt.')) return {skipped:true,reason:'legacy-not-confirmed'};
   var recovery=gistCreateLegacyRecoverySnapshot();
   if(!recovery.ok) throw new Error('Recovery-Snapshot vor Legacy-Migration konnte weder gespeichert noch exportiert werden');
@@ -4677,13 +4679,16 @@ async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
   var targetPayload={version:6,exported:syncTs,cfg:merged.cfg,profileTextBlocks:merged.profileTextBlocks,regions:merged.regions,firms:merged.firms,deletedIds:merged.deletedIds};
   gistValidateSyncPayload(targetPayload,'Legacy-Migrationsziel');
   var envelope=await gistEncryptPayload(targetPayload,syncTs);
-  var response=await fetch('https://api.github.com/gists/'+id,{
-    method:'PATCH',
-    headers:githubHeaders(token,true),
-    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(envelope,null,2)}}})
-  });
-  if(!response.ok) throw new Error('Legacy-Migration PATCH HTTP '+response.status);
-  if(!await gistApplyData(targetPayload,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Legacy-Migration fehlgeschlagen');
+  var response;
+  try{
+    response=await fetch('https://api.github.com/gists/'+id,{
+      method:'PATCH',
+      headers:githubHeaders(token,true),
+      body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(envelope,null,2)}}})
+    });
+  }catch(e){ throw new Error('PATCH Netzwerkfehler'); }
+  if(!response.ok) throw new Error('PATCH HTTP '+response.status);
+  if(!await gistApplyData(targetPayload,{skipRender:false})) throw new Error('IndexedDB-Fehler nach Legacy-Migration');
   setSyncStatus('Legacy-Gist verschlüsselt ✓',true,false);
   if(!silent) toast('Legacy-Gist wurde verschlüsselt migriert.');
   return {migrated:true};
@@ -4695,25 +4700,25 @@ async function gistPushPayload(token,id,silent){
   S._lastExported=syncTs;
   try{
     var encryptedEnvelope=await gistEncryptPayload(gistBuildPayload(syncTs),syncTs);
-    var r = await fetch('https://api.github.com/gists/'+id,{
-      method:'PATCH',
-      headers:githubHeaders(token,true),
-      body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(encryptedEnvelope,null,2)}}})
-    });
+    var r;
+    try{
+      r=await fetch('https://api.github.com/gists/'+id,{
+        method:'PATCH',
+        headers:githubHeaders(token,true),
+        body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(encryptedEnvelope,null,2)}}})
+      });
+    }catch(e){ throw new Error('PATCH Netzwerkfehler'); }
     if(!r.ok) throw new Error('PATCH HTTP '+r.status);
-    if(!await persistLocalOnly()) throw new Error('IndexedDB-Speichern nach Gist-Push fehlgeschlagen');
-    setSyncStatus('Synchronisiert ✓',true,false);
-    if(!silent) toast('☁ Synchronisiert');
+    if(!await persistLocalOnly(S,{suppressToast:true})) throw new Error('IndexedDB-Fehler nach Push');
   }catch(e){
     S._lastExported=prevTs;
     var restoreError=null;
     try{
-      if(!await persistLocalOnly()) restoreError=new Error('persistLocalOnly meldete einen Fehler');
+      if(!await persistLocalOnly(S,{suppressToast:true})) restoreError=new Error('persistLocalOnly meldete einen Fehler');
     }catch(persistError){ restoreError=persistError; }
     if(restoreError){
       var restoreMessage='Lokale Wiederherstellung von _lastExported fehlgeschlagen: '+(restoreError.message||String(restoreError));
       console.error('[Gist-Sync] '+restoreMessage,restoreError);
-      if(!silent) toast(restoreMessage);
       throw new Error((e.message||String(e))+'; '+restoreMessage);
     }
     throw e;
@@ -4733,15 +4738,12 @@ async function gistSync(opts){
   _syncInProgress=true;
   setSyncStatus('Synchronisiere …',true,true);
   try{
-    var remoteResult;
-    try{ remoteResult = await gistFetchRemote(token,id); }
-    catch(e){
-      setSyncStatus(e.remotePayloadInvalid?'Ungültige Remote-Daten':'Abruf-Fehler',false,false);
-      throw new Error((e.remotePayloadInvalid?'Remote-Payload: ':'Abruf: ')+e.message);
-    }
+    var remoteResult=await gistFetchRemote(token,id);
     if(remoteResult.kind==='legacy'){
-      setSyncStatus('Legacy-Klartext erkannt',false,false);
-      if(mode==='startup'||mode==='auto') return {skipped:true,reason:'legacy'};
+      if(mode==='startup'||mode==='auto'){
+        setSyncStatus('Legacy-Klartext erkannt',false,false);
+        return {skipped:true,reason:'legacy'};
+      }
       return await gistMigrateLegacyRemote(token,id,remoteResult.payload,silent);
     }
     var remoteMissing=remoteResult.kind==='missing';
@@ -4763,7 +4765,7 @@ async function gistSync(opts){
       }
       var pullRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Pull_'+today()+'.json'});
       if(!pullRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Pull konnte weder gespeichert noch exportiert werden');
-      if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen');
+      if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Fehler nach Pull');
       setSyncStatus('Heruntergeladen ✓',true,false);
       if(!silent) toast('⬇ Daten geladen');
       return {pulled:true};
@@ -4774,7 +4776,7 @@ async function gistSync(opts){
     var remoteTime=remoteData.exported||'';
     var mergedData;
     try{ mergedData = mergeSyncData(localData, remoteData); }
-    catch(e){ setSyncStatus('Merge-Fehler',false,false); throw new Error('Merge: '+e.message); }
+    catch(e){ throw new Error('Merge-Fehler – '+e.message); }
     var mergedPayload=JSON.parse(JSON.stringify({version:6,exported:remoteTime||localTime||'',cfg:mergedData.cfg,profileTextBlocks:mergedData.profileTextBlocks,regions:mergedData.regions,firms:mergedData.firms,deletedIds:mergedData.deletedIds}));
     gistValidateSyncPayload(mergedPayload,'Gist-Merge-Payload');
     var normalizedLocal=normalizePayloadForCompare(localData);
@@ -4789,11 +4791,12 @@ async function gistSync(opts){
     }
     var mergeRecovery=createRecoverySnapshot({download:true,fileName:'FIAE_Quest_RECOVERY_vor_Gist_Merge_'+today()+'.json'});
     if(!mergeRecovery.ok) throw new Error('Recovery-Snapshot vor Gist-Merge konnte weder gespeichert noch exportiert werden');
-    if(didChange&&!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Speichern nach Gist-Merge fehlgeschlagen');
+    if(didChange&&!await gistApplyData(mergedPayload,{skipRender:true})) throw new Error('IndexedDB-Fehler nach Merge');
     if(needsPush){
-      try{ await gistPushPayload(token,id,silent); }
-      catch(e){ setSyncStatus('Push-Fehler',false,false); throw new Error('Push: '+e.message); }
-      if(!await gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Push fehlgeschlagen');
+      await gistPushPayload(token,id,silent);
+      if(!await gistApplyData(Object.assign({}, mergedPayload, {exported:S._lastExported||mergedPayload.exported}), {skipRender:false})) throw new Error('IndexedDB-Fehler nach Push');
+      setSyncStatus('Synchronisiert ✓',true,false);
+      if(!silent) toast('☁ Synchronisiert');
       return {pushed:true,didChange:didChange,needsPush:needsPush,localTime:localTime,remoteTime:remoteTime};
     }
     setSyncStatus('Heruntergeladen ✓',true,false);
@@ -4801,7 +4804,9 @@ async function gistSync(opts){
     renderDB(); drawMap(); renderQuestOverview(); if(currentTab==='settings') updateInfoPanel();
     return {pulled:true,didChange:didChange,needsPush:needsPush};
   }catch(err){
-    if(!silent) toast('Sync-Fehler ('+(err.message||'unbekannt').slice(0,60)+')');
+    var errorMessage=err.message||'Sync-Fehler';
+    setSyncStatus(errorMessage,false,false);
+    if(!silent) toast(errorMessage);
     return {error:err};
   }finally{
     _syncInProgress=false;
@@ -4832,7 +4837,7 @@ async function gistApplyData(data, opts){
   candidate.firms=(candidate.firms||[]).filter(function(f){ return !candidate.deletedIds[String(f.id)]; });
   // Preserve the gist-supplied timestamp exactly — do NOT call save() which would overwrite it.
   candidate._lastExported=data.exported||candidate._lastExported||'';
-  if(!await persistLocalOnly(candidate,{skipEmergencyFallback:true})) return false;
+  if(!await persistLocalOnly(candidate,{skipEmergencyFallback:true,suppressToast:true})) return false;
   S=candidate;
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
