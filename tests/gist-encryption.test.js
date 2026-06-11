@@ -106,7 +106,7 @@ const payload = {
   await assert.rejects(api.fetchRemote('token', 'gist-id'), /unbekanntes Format/);
 
   api.setResponse({files:{'fiae_quest_data.json':{content:'{invalid json'}}});
-  await assert.rejects(api.fetchRemote('token', 'gist-id'), /Passphrase falsch oder Payload beschädigt/);
+  await assert.rejects(api.fetchRemote('token', 'gist-id'), /Fehlerhaftes JSON/);
 
   const emptyCryptoValue = JSON.parse(JSON.stringify(envelope));
   emptyCryptoValue.crypto.salt = '';

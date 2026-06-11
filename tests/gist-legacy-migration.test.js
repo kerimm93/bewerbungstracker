@@ -133,8 +133,7 @@ function createMigrationHarness(options = {}) {
   assert(order.indexOf('merge') < order.indexOf('encrypt'));
   assert(order.indexOf('encrypt') < order.indexOf('patch'));
   assert(order.indexOf('patch') < order.indexOf('apply'));
-  assert(state.calls.some(([name,message]) => name === 'toast' && message === 'Remote-Gist enthält Legacy-Klartextdaten.'));
-  assert(state.calls.some(([name,message]) => name === 'toast' && message === 'Vor Migration Emergency-Backup exportieren.'));
+  assert.deepStrictEqual(state.calls.filter(([name]) => name === 'toast').map(([,message]) => message), ['Legacy-Gist wurde verschlüsselt migriert.'], 'Die Migration darf nur ihren abschließenden Erfolgstoast ausgeben');
   assert(state.patched.files['fiae_quest_data.json'].content.includes('"type": "encrypted"'));
 
   console.log('Legacy Gist blocking, confirmation, recovery snapshot and encrypted migration OK');
