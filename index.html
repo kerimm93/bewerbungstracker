@@ -4334,12 +4334,22 @@ async function gistDeriveEncryptionKey(passphrase,salt){
     keyMaterial,{name:GIST_CIPHER,length:256},false,['encrypt','decrypt']
   );
 }
+function gistValidateSyncPayload(payload, sourceLabel){
+  var label=sourceLabel||'Gist-Sync-Payload';
+  if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.version!==6||typeof payload.exported!=='string'||!Array.isArray(payload.firms)||!Array.isArray(payload.regions)||!payload.cfg||typeof payload.cfg!=='object'||Array.isArray(payload.cfg)) throw new Error(label+' ist ungültig');
+  if(payload.profileTextBlocks!==undefined&&(!payload.profileTextBlocks||typeof payload.profileTextBlocks!=='object'||Array.isArray(payload.profileTextBlocks))) throw new Error(label+' enthält ungültige Textbausteine');
+  if(payload.deletedIds!==undefined&&(!payload.deletedIds||typeof payload.deletedIds!=='object'||Array.isArray(payload.deletedIds))) throw new Error(label+' enthält ungültige Löschmarkierungen');
+  return payload;
+}
 function gistValidateEncryptedEnvelope(envelope){
   if(!envelope||typeof envelope!=='object'||Array.isArray(envelope)) throw new Error('Verschlüsseltes Gist-Envelope ist ungültig');
-  if(envelope.type!==GIST_ENVELOPE_TYPE||envelope.app!==GIST_ENVELOPE_APP||envelope.version!==1) throw new Error('Verschlüsseltes Gist-Envelope wird nicht unterstützt');
+  if(envelope.type!==GIST_ENVELOPE_TYPE) throw new Error('Unerwarteter Gist-Envelope-Typ');
+  if(envelope.app!==GIST_ENVELOPE_APP) throw new Error('Gist-Envelope gehört nicht zu dieser App');
+  if(envelope.version!==1) throw new Error('Unerwartete Gist-Envelope-Version');
   if(typeof envelope.exported!=='string'||!envelope.exported) throw new Error('Envelope-Zeitstempel fehlt');
   var params=envelope.crypto;
   if(!params||typeof params!=='object'||Array.isArray(params)||params.alg!==GIST_CIPHER||params.kdf!==GIST_KDF||params.iterations!==GIST_KDF_ITERATIONS) throw new Error('Envelope-Kryptoparameter werden nicht unterstützt');
+  if(typeof params.salt!=='string'||!params.salt||typeof params.iv!=='string'||!params.iv||typeof envelope.ciphertext!=='string'||!envelope.ciphertext) throw new Error('Envelope enthält leere Kryptodaten');
   var salt=base64ToArrayBuffer(params.salt), iv=base64ToArrayBuffer(params.iv), ciphertext=base64ToArrayBuffer(envelope.ciphertext);
   if(salt.byteLength!==16) throw new Error('Envelope-Salt muss 16 Byte lang sein');
   if(iv.byteLength!==12) throw new Error('Envelope-IV muss 12 Byte lang sein');
@@ -4352,11 +4362,11 @@ async function gistDecryptEnvelope(envelope){
   var key=await gistDeriveEncryptionKey(_gistSyncPassphrase,encrypted.salt);
   var plaintext;
   try{ plaintext=await crypto.subtle.decrypt({name:GIST_CIPHER,iv:encrypted.iv},key,encrypted.ciphertext); }
-  catch(e){ throw new Error('Gist-Entschlüsselung fehlgeschlagen: Passphrase falsch oder Daten manipuliert'); }
+  catch(e){ throw new Error('Gist konnte nicht entschlüsselt werden: Passphrase falsch oder Payload beschädigt'); }
   var payload;
   try{ payload=JSON.parse(utf8Decode(plaintext)); }
-  catch(e){ throw new Error('Entschlüsselter Gist-Payload ist kein gültiges JSON'); }
-  if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.version!==6||!Array.isArray(payload.firms)||!Array.isArray(payload.regions)||!payload.cfg||typeof payload.cfg!=='object'||Array.isArray(payload.cfg)) throw new Error('Entschlüsselter Gist-Payload ist ungültig');
+  catch(e){ throw new Error('Entschlüsselter Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt'); }
+  gistValidateSyncPayload(payload,'Entschlüsselter Gist-Payload');
   if(payload.exported!==envelope.exported) throw new Error('Envelope- und Payload-Zeitstempel stimmen nicht überein');
   return payload;
 }
@@ -4577,17 +4587,68 @@ async function getFullGistFileText(file){
   return rr.text();
 }
 
+function gistClassifyRemoteJson(remoteData){
+  if(!remoteData||typeof remoteData!=='object'||Array.isArray(remoteData)) return {kind:'invalid',message:'Remote-Gist hat ein ungültiges Format'};
+  if(remoteData.type===GIST_ENVELOPE_TYPE) return {kind:'encrypted',envelope:remoteData};
+  if(remoteData.type!==undefined||remoteData.app!==undefined||remoteData.version!==6||remoteData.crypto!==undefined||remoteData.ciphertext!==undefined){
+    return {kind:'invalid',message:'Remote-Gist hat ein unbekanntes Format oder eine unerwartete Envelope-Version'};
+  }
+  try{ gistValidateSyncPayload(remoteData,'Legacy-Klartext-Payload'); }
+  catch(e){ return {kind:'invalid',message:e.message}; }
+  return {kind:'legacy',payload:remoteData};
+}
+
 async function gistFetchRemote(token,id){
   var res = await fetch('https://api.github.com/gists/'+id,{headers:githubHeaders(token)});
   if(!res.ok) throw new Error('GET HTTP '+res.status);
   var gist = await res.json();
   var file = gist.files&&(gist.files[GIST_FILE]||Object.values(gist.files)[0]);
-  if(!file) return null;
+  if(!file) return {kind:'empty',payload:null};
   var fullText = await getFullGistFileText(file);
-  if(!fullText) return null;
-  var remoteData=JSON.parse(fullText);
-  if(remoteData&&typeof remoteData==='object'&&(remoteData.type===GIST_ENVELOPE_TYPE||remoteData.crypto||remoteData.ciphertext)) return gistDecryptEnvelope(remoteData);
-  return remoteData;
+  if(!fullText) return {kind:'empty',payload:null};
+  var remoteData;
+  try{ remoteData=JSON.parse(fullText); }
+  catch(e){ throw new Error('Remote-Gist konnte nicht gelesen werden: Passphrase falsch oder Payload beschädigt'); }
+  var classified=gistClassifyRemoteJson(remoteData);
+  if(classified.kind==='invalid') throw new Error(classified.message);
+  if(classified.kind==='encrypted'){
+    gistValidateEncryptedEnvelope(classified.envelope);
+    return {kind:'encrypted',payload:await gistDecryptEnvelope(classified.envelope)};
+  }
+  return classified;
+}
+
+function gistCreateLegacyRecoverySnapshot(){
+  var runtimeJson=JSON.stringify(S);
+  var runtimeCopy=JSON.parse(runtimeJson);
+  downloadJson(runtimeCopy,'FIAE_Quest_RECOVERY_vor_Gist_Migration_'+today()+'.json');
+  try{ localStorage.setItem(LS_EMERGENCY,runtimeJson); }
+  catch(e){ console.warn('Legacy migration emergency snapshot could not be stored',e); }
+  return runtimeCopy;
+}
+
+async function gistMigrateLegacyRemote(token,id,legacyPayload,silent){
+  if(!_gistSyncPassphrase) throw new Error('Passphrase fehlt — Legacy-Migration blockiert');
+  toast('Remote-Gist enthält Legacy-Klartextdaten.',6000);
+  toast('Vor Migration Emergency-Backup exportieren.',6000);
+  if(!confirm('Legacy-Klartextdaten jetzt migrieren? Zuerst wird ein Recovery-Snapshot des unveränderten Runtime-State erstellt.')) return {skipped:true,reason:'legacy-not-confirmed'};
+  gistCreateLegacyRecoverySnapshot();
+  var localPayload=gistBuildPayload(S._lastExported||'');
+  var merged=mergeSyncData(localPayload,legacyPayload);
+  var syncTs=new Date().toISOString();
+  var targetPayload={version:6,exported:syncTs,cfg:merged.cfg,profileTextBlocks:merged.profileTextBlocks,regions:merged.regions,firms:merged.firms,deletedIds:merged.deletedIds};
+  gistValidateSyncPayload(targetPayload,'Legacy-Migrationsziel');
+  var envelope=await gistEncryptPayload(targetPayload,syncTs);
+  var response=await fetch('https://api.github.com/gists/'+id,{
+    method:'PATCH',
+    headers:githubHeaders(token,true),
+    body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(envelope,null,2)}}})
+  });
+  if(!response.ok) throw new Error('Legacy-Migration PATCH HTTP '+response.status);
+  if(!await gistApplyData(targetPayload,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Legacy-Migration fehlgeschlagen');
+  setSyncStatus('Legacy-Gist verschlüsselt ✓',true,false);
+  if(!silent) toast('Legacy-Gist wurde verschlüsselt migriert.');
+  return {migrated:true};
 }
 
 async function gistPushPayload(token,id,silent){
@@ -4634,9 +4695,15 @@ async function gistSync(opts){
   _syncInProgress=true;
   setSyncStatus('Synchronisiere …',true,true);
   try{
-    var remoteData=null;
-    try{ remoteData = await gistFetchRemote(token,id); }
+    var remoteResult;
+    try{ remoteResult = await gistFetchRemote(token,id); }
     catch(e){ setSyncStatus('Abruf-Fehler',false,false); throw new Error('Abruf: '+e.message); }
+    if(remoteResult.kind==='legacy'){
+      setSyncStatus('Legacy-Klartext erkannt',false,false);
+      if(mode==='startup'||mode==='auto') return {skipped:true,reason:'legacy'};
+      return await gistMigrateLegacyRemote(token,id,remoteResult.payload,silent);
+    }
+    var remoteData=remoteResult.payload;
     if(mode==='pull'){
       if(remoteData){ if(!await gistApplyData(remoteData,{skipRender:false})) throw new Error('IndexedDB-Speichern nach Gist-Pull fehlgeschlagen'); setSyncStatus('Heruntergeladen ✓',true,false); if(!silent) toast('⬇ Daten geladen'); return {pulled:true}; }
       setSyncStatus('Keine Remote-Datei',true,false); return {skipped:true,reason:'no-remote'};
@@ -4724,7 +4791,7 @@ function gistStartupSync(){
   if(!_gistSyncPassphrase) return Promise.resolve({skipped:true,reason:'passphrase',deferred:true});
   if(_gistStartupSyncPromise) return _gistStartupSyncPromise;
   _gistStartupSyncPromise=gistSync({mode:'startup',silent:true}).then(function(result){
-    if(!result||!result.error) _gistStartupSyncPending=false;
+    if(!result||(!result.error&&result.reason!=='legacy')) _gistStartupSyncPending=false;
     return result;
   }).finally(function(){ _gistStartupSyncPromise=null; });
   return _gistStartupSyncPromise;
