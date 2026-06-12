@@ -4595,6 +4595,7 @@ async function getFullGistFileText(file){
 
 function gistClassifyRemoteJson(remoteData){
   if(!remoteData||typeof remoteData!=='object'||Array.isArray(remoteData)) return {kind:'invalid',message:'Remote-Gist hat ein ungültiges Format'};
+  if(Object.keys(remoteData).length===0) return {kind:'empty'};
   if(remoteData.type===GIST_ENVELOPE_TYPE) return {kind:'encrypted',envelope:remoteData};
   if(remoteData.type!==undefined||remoteData.app!==undefined||remoteData.version!==6||remoteData.crypto!==undefined||remoteData.ciphertext!==undefined){
     return {kind:'invalid',message:'Remote-Gist hat ein unbekanntes Format oder eine unerwartete Envelope-Version'};
@@ -4739,6 +4740,17 @@ async function gistSync(opts){
   setSyncStatus('Synchronisiere …',true,true);
   try{
     var remoteResult=await gistFetchRemote(token,id);
+    if(remoteResult.kind==='empty'){
+      if(mode==='push'){
+        await gistPushPayload(token,id,silent);
+        setSyncStatus('Initial-Gist verschlüsselt ✓',true,false);
+        if(!silent) toast('☁ Initial-Gist verschlüsselt hochgeladen');
+        return {pushed:true,initialized:true};
+      }
+      setSyncStatus('Leerer Initial-Gist',true,false);
+      if(!silent&&(mode==='pull'||mode==='merge')) toast('Leerer Initial-Gist erkannt. Lokale Daten bleiben unverändert.');
+      return {skipped:true,reason:'empty-initial-gist'};
+    }
     if(remoteResult.kind==='legacy'){
       if(mode==='startup'||mode==='auto'){
         setSyncStatus('Legacy-Klartext erkannt',false,false);
