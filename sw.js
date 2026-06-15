@@ -1,4 +1,4 @@
-var CACHE = 'fiae-quest-v1';
+var CACHE = 'fiae-quest-v2';
 var ASSETS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', function(e) {
