@@ -860,13 +860,13 @@ textarea{resize:vertical;min-height:80px;}
       <div class="qs">
         <div class="qh">👤 Persönliche Angaben</div>
         <div class="notice">Diese Werte werden automatisch in alle Prompts eingesetzt.</div>
-        <label>Name</label><input class="stinp" id="cfg-name" placeholder="Kerim Mallée" oninput="saveCfg()"/>
-        <label>Bildungsträger</label><input class="stinp" id="cfg-traeger" placeholder="IBB AG" oninput="saveCfg()"/>
-        <label>Ausbildungsberuf</label><input class="stinp" id="cfg-beruf" placeholder="Fachinformatiker für Anwendungsentwicklung" oninput="saveCfg()"/>
-        <label>Praktikum von</label><input class="stinp" id="cfg-von" placeholder="10.08.2026" oninput="saveCfg()"/>
-        <label>Praktikum bis</label><input class="stinp" id="cfg-bis" placeholder="02.04.2027" oninput="saveCfg()"/>
+        <label>Name</label><input class="stinp" id="cfg-name" name="bt-cfg-person-name" placeholder="Kerim Mallée" autocomplete="off" autocapitalize="words" spellcheck="false" oninput="saveCfg(event)"/>
+        <label>Bildungsträger</label><input class="stinp" id="cfg-traeger" name="bt-cfg-bildungstraeger" placeholder="IBB AG" autocomplete="off" autocapitalize="words" spellcheck="false" oninput="saveCfg(event)"/>
+        <label>Ausbildungsberuf</label><input class="stinp" id="cfg-beruf" name="bt-cfg-ausbildungsberuf" placeholder="Fachinformatiker für Anwendungsentwicklung" autocomplete="off" autocapitalize="sentences" spellcheck="true" oninput="saveCfg(event)"/>
+        <label>Praktikum von</label><input class="stinp" id="cfg-von" name="bt-cfg-praktikum-von" placeholder="10.08.2026" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="numeric" oninput="saveCfg(event)"/>
+        <label>Praktikum bis</label><input class="stinp" id="cfg-bis" name="bt-cfg-praktikum-bis" placeholder="02.04.2027" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="numeric" oninput="saveCfg(event)"/>
         <div class="arow" style="margin-top:12px;">
-          <button class="btn btn-v btn-sm" onclick="saveCfgConfirm()">Speichern</button>
+          <button class="btn btn-v btn-sm" onclick="saveCfgConfirm(event)">Speichern</button>
           <span id="cfg-saved" style="font-size:12px;color:var(--green);display:none;">✓ Gespeichert</span>
         </div>
       </div>
@@ -876,13 +876,13 @@ textarea{resize:vertical;min-height:80px;}
         <div class="qh">🧾 Standard-Anschreibenblöcke</div>
         <div class="notice">Diese globalen Texte werden für Bewerbungen ohne eigenen Override verwendet. Ein bewusst leer gespeicherter Bewerbungs-Override bleibt leer.</div>
         <label>Standard-Einleitung</label>
-        <textarea class="stinp" id="profile-standardEinleitung" rows="4" placeholder="Allgemeine Einleitung des Anschreibens …" oninput="saveProfileTextBlock('standardEinleitung')"></textarea>
+        <textarea class="stinp" id="profile-standardEinleitung" rows="4" placeholder="Allgemeine Einleitung des Anschreibens …" name="bt-profile-standard-einleitung" autocomplete="off" autocapitalize="sentences" spellcheck="true" oninput="saveProfileTextBlock('standardEinleitung',event)"></textarea>
         <label>Standard-Motivation</label>
-        <textarea class="stinp" id="profile-standardMotivation" rows="4" placeholder="Allgemeiner Motivationstext …" oninput="saveProfileTextBlock('standardMotivation')"></textarea>
+        <textarea class="stinp" id="profile-standardMotivation" rows="4" placeholder="Allgemeiner Motivationstext …" name="bt-profile-standard-motivation" autocomplete="off" autocapitalize="sentences" spellcheck="true" oninput="saveProfileTextBlock('standardMotivation',event)"></textarea>
         <label>Standard-Projekte</label>
-        <textarea class="stinp" id="profile-standardProjekte" rows="4" placeholder="Allgemeiner Projekt- oder Praxisteil …" oninput="saveProfileTextBlock('standardProjekte')"></textarea>
+        <textarea class="stinp" id="profile-standardProjekte" rows="4" placeholder="Allgemeiner Projekt- oder Praxisteil …" name="bt-profile-standard-projekte" autocomplete="off" autocapitalize="sentences" spellcheck="true" oninput="saveProfileTextBlock('standardProjekte',event)"></textarea>
         <label>Standard-Schluss</label>
-        <textarea class="stinp" id="profile-standardSchluss" rows="4" placeholder="Allgemeiner Schlussteil …" oninput="saveProfileTextBlock('standardSchluss')"></textarea>
+        <textarea class="stinp" id="profile-standardSchluss" rows="4" placeholder="Allgemeiner Schlussteil …" name="bt-profile-standard-schluss" autocomplete="off" autocapitalize="sentences" spellcheck="true" oninput="saveProfileTextBlock('standardSchluss',event)"></textarea>
       </div>
 
       <!-- GitHub Gist Sync -->
@@ -891,11 +891,11 @@ textarea{resize:vertical;min-height:80px;}
         <div class="notice">Token und Gist-ID werden nur lokal im Browser gespeichert — nie exportiert.</div>
         <div style="font-size:12px;color:var(--ink-light);margin-bottom:8px;">Wird automatisch lokal gespeichert.</div>
         <label>GitHub Personal Access Token (nur Gist-Berechtigung)</label>
-        <input type="password" id="gist-token" placeholder="ghp_…" oninput="saveGistCfg()"/>
+        <input type="password" id="gist-token" name="bt-gist-access-token" placeholder="ghp_…" autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" oninput="saveGistCfg(event)"/>
         <label>Gist ID</label>
-        <input id="gist-id" placeholder="abc123…" oninput="saveGistCfg()"/>
+        <input id="gist-id" name="bt-gist-identifier" placeholder="abc123…" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" oninput="saveGistCfg(event)"/>
         <label>Sync-Passphrase (nur für diese Sitzung)</label>
-        <input type="password" id="gist-passphrase" placeholder="Passphrase für verschlüsselten Sync" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rememberGistSyncPassphrase();}"/>
+        <input type="password" id="gist-passphrase" name="bt-gist-session-passphrase" placeholder="Passphrase für verschlüsselten Sync" autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" onkeydown="if(event.key==='Enter'){event.preventDefault();rememberGistSyncPassphrase();}"/>
         <div class="gist-passphrase-actions">
           <button class="btn btn-s btn-sm" type="button" onclick="rememberGistSyncPassphrase()">Für diese Sitzung merken</button>
           <span class="gist-passphrase-status" id="gist-passphrase-status" role="status" aria-live="polite">Passphrase fehlt — verschlüsselter Sync blockiert</span>
@@ -903,7 +903,7 @@ textarea{resize:vertical;min-height:80px;}
         <div class="notice" style="margin-top:8px;">Die Passphrase bleibt ausschließlich im Arbeitsspeicher und wird weder gespeichert noch exportiert.</div>
         <label>Auto-Sync (30s Debounce nach jeder Änderung)</label>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-          <input type="checkbox" id="gist-auto" onchange="saveGistCfg()" style="width:auto;min-height:0;height:18px;cursor:pointer;"/>
+          <input type="checkbox" id="gist-auto" name="bt-gist-auto-sync" autocomplete="off" onchange="saveGistCfg(event)" style="width:auto;min-height:0;height:18px;cursor:pointer;"/>
           <label for="gist-auto" style="margin:0;text-transform:none;font-size:13px;color:var(--ink);">Automatisch synchronisieren</label>
         </div>
         <div class="sync-row" style="margin-top:12px;">
@@ -1179,6 +1179,8 @@ var _syncInProgress = false;
 var _gistSyncPassphrase = '';
 var _gistStartupSyncPending = true;
 var _gistStartupSyncPromise = null;
+var _settingsHydrating = false;
+var _settingsUserInput = Object.create(null);
 var _lastPersistError = null;
 var _lastPersistPayloadSize = null;
 var _lastPersistFailedAt = '';
@@ -4013,42 +4015,81 @@ function renderNextStepsPanel(){
 // SETTINGS
 // ================================================================
 function getCfg() { return Object.assign({},CFG_DEFAULTS,S.cfg||{}); }
-function saveCfg(){
-  if(!S.cfg) S.cfg={};
-  ['name','traeger','beruf','von','bis'].forEach(function(k){
-    var el=document.getElementById('cfg-'+k);
-    if(el&&el.value) S.cfg[k]=el.value;
-  });
-  return save();
+function withSettingsHydration(fn){
+  var previous=_settingsHydrating;
+  _settingsHydrating=true;
+  try{return fn();}finally{_settingsHydrating=previous;}
 }
-function saveProfileTextBlock(key){
+function isSettingsField(el){return !!(el&&(/^(cfg-|profile-)/.test(el.id)||['gist-token','gist-id','gist-auto'].includes(el.id)));}
+document.addEventListener('keydown',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
+document.addEventListener('paste',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
+document.addEventListener('compositionstart',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
+document.addEventListener('beforeinput',function(e){
+  if(isSettingsField(e.target)&&e.isTrusted&&/^(insertText|insertLineBreak|insertParagraph|insertFromPaste|delete)/.test(e.inputType||'')) _settingsUserInput[e.target.id]=true;
+},true);
+function isSettingsWriteAllowed(event, fieldId, opts){
+  opts=opts||{};
+  if(_settingsHydrating) return false;
+  if(opts.explicit) return true;
+  if(!event||!event.isTrusted) return false;
+  if(opts.checkbox) return event.type==='change';
+  if(!_settingsUserInput[fieldId]) return false;
+  delete _settingsUserInput[fieldId];
+  return true;
+}
+function isPlausibleCfgDate(value){
+  return /^(?:\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2})$/.test(String(value||'').trim());
+}
+async function saveCfg(event,opts){
+  opts=opts||{};
+  var sourceId=event&&event.target?event.target.id:'';
+  if(!isSettingsWriteAllowed(event,sourceId,{explicit:!!opts.explicit})) return false;
+  if(!S.cfg) S.cfg={};
+  var changed=false;
+  ['name','traeger','beruf','von','bis'].forEach(function(k){
+    var el=document.getElementById('cfg-'+k), value=el?String(el.value||'').trim():'';
+    if(!el||!value) return;
+    if((k==='von'||k==='bis')&&!isPlausibleCfgDate(value)){
+      if(sourceId===el.id) console.warn('Ungültiger Praktikumszeitraum nicht gespeichert:',value);
+      return;
+    }
+    if(opts.explicit||sourceId===el.id){if(S.cfg[k]!==value){S.cfg[k]=value;changed=true;}}
+  });
+  return changed?save():true;
+}
+function saveProfileTextBlock(key,event){
   var defaults=defaultProfileTextBlocks();
   if(!Object.prototype.hasOwnProperty.call(defaults,key)) return;
-  var el=document.getElementById('profile-'+key); if(!el) return;
+  var el=document.getElementById('profile-'+key); if(!el||!isSettingsWriteAllowed(event,el.id)) return;
   getProfileTextBlocks()[key]=String(el.value||'');
   save();
 }
 function loadProfileTextBlocksUI(){
-  var blocks=getProfileTextBlocks();
-  Object.keys(defaultProfileTextBlocks()).forEach(function(k){
-    var el=document.getElementById('profile-'+k); if(el) el.value=blocks[k]||'';
+  return withSettingsHydration(function(){
+    var blocks=getProfileTextBlocks();
+    Object.keys(defaultProfileTextBlocks()).forEach(function(k){
+      var el=document.getElementById('profile-'+k); if(el) el.value=blocks[k]||'';
+    });
   });
 }
-async function saveCfgConfirm(){
-  if(!await saveCfg()) return;
+async function saveCfgConfirm(event){
+  if(_settingsHydrating||!event||!event.isTrusted) return;
+  if(!await save()) return;
   var el=document.getElementById('cfg-saved');el.style.display='inline';
   setTimeout(function(){el.style.display='none';},2000);
   toast('Einstellungen gespeichert.');
 }
 function loadCfgUI(){
-  var cfg=getCfg();
-  ['name','traeger','beruf','von','bis'].forEach(function(k){
-    var el=document.getElementById('cfg-'+k);if(el)el.value=cfg[k]||'';
+  return withSettingsHydration(function(){
+    var cfg=getCfg();
+    ['name','traeger','beruf','von','bis'].forEach(function(k){
+      var el=document.getElementById('cfg-'+k);if(el)el.value=cfg[k]||'';
+    });
+    var dirBtn=document.getElementById('btn-pick-template-dir');
+    if(dirBtn) dirBtn.style.display=window.showDirectoryPicker?'inline-flex':'none';
+    refreshTemplateStatus();
+    loadProfileTextBlocksUI();
   });
-  var dirBtn=document.getElementById('btn-pick-template-dir');
-  if(dirBtn) dirBtn.style.display=window.showDirectoryPicker?'inline-flex':'none';
-  refreshTemplateStatus();
-  loadProfileTextBlocksUI();
 }
 function updateInfoPanel(){
   function set(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
@@ -4282,12 +4323,15 @@ async function rememberGistSyncPassphrase(){
   renderDB();
   renderQuestOverview();
   drawMap();
+  if(currentTab==='settings'){ loadCfgUI(); loadGistCfgUI(); }
 }
 
-function saveGistCfg(){
-  var t=document.getElementById('gist-token'); if(t) localStorage.setItem(GIST_TOKEN_KEY,t.value);
-  var i=document.getElementById('gist-id'); if(i) localStorage.setItem(GIST_ID_KEY,i.value);
-  var a=document.getElementById('gist-auto'); if(a) localStorage.setItem(GIST_AUTO_KEY,a.checked?'1':'0');
+function saveGistCfg(event){
+  var source=event&&event.target;
+  if(!source||!isSettingsWriteAllowed(event,source.id,{checkbox:source.type==='checkbox'})) return;
+  if(source.id==='gist-token') localStorage.setItem(GIST_TOKEN_KEY,source.value);
+  if(source.id==='gist-id') localStorage.setItem(GIST_ID_KEY,source.value);
+  if(source.id==='gist-auto') localStorage.setItem(GIST_AUTO_KEY,source.checked?'1':'0');
   if(!gistGetAuto()) clearGistAutoSyncTimer();
   gistCheckSyncRequirements({updateSyncStatus:true});
   var fb=document.getElementById('gist-cfg-saved');
@@ -4298,11 +4342,13 @@ function saveGistCfg(){
   }
 }
 function loadGistCfgUI(){
-  var t=document.getElementById('gist-token'); if(t) t.value=gistGetToken();
-  var i=document.getElementById('gist-id'); if(i) i.value=gistGetId();
-  var p=document.getElementById('gist-passphrase'); if(p) p.value='';
-  var a=document.getElementById('gist-auto'); if(a) a.checked=gistGetAuto();
-  gistCheckSyncRequirements({updateSyncStatus:true});
+  return withSettingsHydration(function(){
+    var t=document.getElementById('gist-token'); if(t) t.value=gistGetToken();
+    var i=document.getElementById('gist-id'); if(i) i.value=gistGetId();
+    var p=document.getElementById('gist-passphrase'); if(p) p.value='';
+    var a=document.getElementById('gist-auto'); if(a) a.checked=gistGetAuto();
+    gistCheckSyncRequirements({updateSyncStatus:true});
+  });
 }
 function setSyncStatus(msg,ok,busy){
   var dot=document.getElementById('sync-dot');var msgEl=document.getElementById('sync-msg');
@@ -4857,7 +4903,7 @@ async function gistApplyData(data, opts){
   S=candidate;
   if(!opts.skipRender){
     renderDB(); drawMap(); renderQuestOverview();
-    if(currentTab==='settings') { updateInfoPanel(); loadGistCfgUI(); loadProfileTextBlocksUI(); }
+    if(currentTab==='settings') { updateInfoPanel(); loadCfgUI(); loadGistCfgUI(); }
   }
   return true;
 }
