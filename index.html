@@ -4018,13 +4018,15 @@ function getCfg() { return Object.assign({},CFG_DEFAULTS,S.cfg||{}); }
 function withSettingsHydration(fn){
   var previous=_settingsHydrating;
   _settingsHydrating=true;
+  _settingsUserInput=Object.create(null);
   try{return fn();}finally{_settingsHydrating=previous;}
 }
 function isSettingsField(el){return !!(el&&(/^(cfg-|profile-)/.test(el.id)||['gist-token','gist-id','gist-auto'].includes(el.id)));}
 document.addEventListener('keydown',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
 document.addEventListener('paste',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
 document.addEventListener('compositionstart',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
-document.addEventListener('compositionend',function(e){if(isSettingsField(e.target)&&e.isTrusted) _settingsUserInput[e.target.id]=true;},true);
+document.addEventListener('compositionend',function(e){if(isSettingsField(e.target)) delete _settingsUserInput[e.target.id];},true);
+document.addEventListener('focusout',function(e){if(isSettingsField(e.target)) delete _settingsUserInput[e.target.id];},true);
 document.addEventListener('beforeinput',function(e){
   if(isSettingsField(e.target)&&e.isTrusted&&/^(insertText|insertReplacementText|insertCompositionText|insertLineBreak|insertParagraph|insertFromPaste|delete)/.test(e.inputType||'')) _settingsUserInput[e.target.id]=true;
 },true);
