@@ -4024,8 +4024,9 @@ function isSettingsField(el){return !!(el&&(/^(cfg-|profile-)/.test(el.id)||['gi
 document.addEventListener('keydown',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
 document.addEventListener('paste',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
 document.addEventListener('compositionstart',function(e){if(isSettingsField(e.target)) _settingsUserInput[e.target.id]=true;},true);
+document.addEventListener('compositionend',function(e){if(isSettingsField(e.target)&&e.isTrusted) _settingsUserInput[e.target.id]=true;},true);
 document.addEventListener('beforeinput',function(e){
-  if(isSettingsField(e.target)&&e.isTrusted&&/^(insertText|insertLineBreak|insertParagraph|insertFromPaste|delete)/.test(e.inputType||'')) _settingsUserInput[e.target.id]=true;
+  if(isSettingsField(e.target)&&e.isTrusted&&/^(insertText|insertReplacementText|insertCompositionText|insertLineBreak|insertParagraph|insertFromPaste|delete)/.test(e.inputType||'')) _settingsUserInput[e.target.id]=true;
 },true);
 function isSettingsWriteAllowed(event, fieldId, opts){
   opts=opts||{};
@@ -4033,6 +4034,7 @@ function isSettingsWriteAllowed(event, fieldId, opts){
   if(opts.explicit) return true;
   if(!event||!event.isTrusted) return false;
   if(opts.checkbox) return event.type==='change';
+  if(event.isComposing||event.inputType==='insertCompositionText') return true;
   if(!_settingsUserInput[fieldId]) return false;
   delete _settingsUserInput[fieldId];
   return true;
@@ -4074,7 +4076,7 @@ function loadProfileTextBlocksUI(){
 }
 async function saveCfgConfirm(event){
   if(_settingsHydrating||!event||!event.isTrusted) return;
-  if(!await save()) return;
+  if(!await saveCfg(event,{explicit:true})) return;
   var el=document.getElementById('cfg-saved');el.style.display='inline';
   setTimeout(function(){el.style.display='none';},2000);
   toast('Einstellungen gespeichert.');
