@@ -693,6 +693,7 @@ textarea{resize:vertical;min-height:80px;}
               <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Standard-Einleitung für diese Bewerbung</div>
                 <textarea id="pdfd-standard-einleitung" rows="4" placeholder="Ohne Override wird die globale Standard-Einleitung verwendet." oninput="savePdfDraftField('standardEinleitungOverride')"></textarea>
+                <label class="chk"><input id="pdfd-omit-standard-einleitung" type="checkbox" onchange="togglePdfDraftOmit('standardEinleitungOverride')"/> Standardblock bewusst auslassen</label>
               </div>
               <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Firmenspezifischer Satz</div>
@@ -701,14 +702,17 @@ textarea{resize:vertical;min-height:80px;}
               <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Standard-Motivation für diese Bewerbung</div>
                 <textarea id="pdfd-standard-motivation" rows="4" placeholder="Ohne Override wird die globale Standard-Motivation verwendet." oninput="savePdfDraftField('standardMotivationOverride')"></textarea>
+                <label class="chk"><input id="pdfd-omit-standard-motivation" type="checkbox" onchange="togglePdfDraftOmit('standardMotivationOverride')"/> Standardblock bewusst auslassen</label>
               </div>
               <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Standard-Projekte für diese Bewerbung</div>
                 <textarea id="pdfd-standard-projekte" rows="4" placeholder="Ohne Override werden die globalen Standard-Projekte verwendet." oninput="savePdfDraftField('standardProjekteOverride')"></textarea>
+                <label class="chk"><input id="pdfd-omit-standard-projekte" type="checkbox" onchange="togglePdfDraftOmit('standardProjekteOverride')"/> Standardblock bewusst auslassen</label>
               </div>
               <div class="pdf-draft-item">
                 <div class="pdf-draft-label">Standard-Schluss für diese Bewerbung</div>
                 <textarea id="pdfd-standard-schluss" rows="4" placeholder="Ohne Override wird der globale Standard-Schluss verwendet." oninput="savePdfDraftField('standardSchlussOverride')"></textarea>
+                <label class="chk"><input id="pdfd-omit-standard-schluss" type="checkbox" onchange="togglePdfDraftOmit('standardSchlussOverride')"/> Standardblock bewusst auslassen</label>
               </div>
             </div>
             <div class="arow" style="margin-top:10px;">
@@ -1081,12 +1085,39 @@ var BAUSTEIN_LABELS = {
   firmenbezug:'Firmenbezug',notizen:'Sonstige Notizen'
 };
 var STEP_STATUSES = ['offen','begonnen','Rohentwurf','geprüft','erledigt'];
+
+var STANDARD_PDF_OVERRIDE_KEYS = ['standardEinleitungOverride','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'];
+var PDF_OVERRIDE_TO_PROFILE_KEY = {
+  standardEinleitungOverride:'standardEinleitung',
+  standardMotivationOverride:'standardMotivation',
+  standardProjekteOverride:'standardProjekte',
+  standardSchlussOverride:'standardSchluss'
+};
+var PDF_OVERRIDE_TO_OMIT_KEY = {
+  standardEinleitungOverride:'standardEinleitungOmit',
+  standardMotivationOverride:'standardMotivationOmit',
+  standardProjekteOverride:'standardProjekteOmit',
+  standardSchlussOverride:'standardSchlussOmit'
+};
+function isStandardPdfOverrideKey(key){ return STANDARD_PDF_OVERRIDE_KEYS.indexOf(key)!==-1; }
+function isPdfDraftOmitted(d,key){ return !!(d&&d._omit&&d._omit[key]===true); }
+function hasNonEmptyPdfDraftOverride(d,key){ return !!(d&&d._set&&d._set[key]===true&&String(d[key]||'').trim()); }
+function normalizeEmailInput(value){
+  var text=String(value||'').replace(/\s+/g,' ').trim();
+  var md=text.match(/^\[[^\]]*\]\(\s*mailto:([^\s)]+)\s*\)$/i);
+  if(md) return md[1].trim();
+  var mailto=text.match(/^mailto:([^\s]+)$/i);
+  if(mailto) return mailto[1].trim();
+  return text;
+}
+
 function defaultPdfDraft(){
   return {
     datum:'', adressblock:'', anredezeile:'',
     standardEinleitungOverride:'', firmenspezifischerSatz:'',
     standardMotivationOverride:'', standardProjekteOverride:'', standardSchlussOverride:'',
-    _set:{}
+    _set:{},
+    _omit:{}
   };
 }
 
@@ -1124,6 +1155,7 @@ function ensureQuestDefaults(q) {
   q.bausteine = Object.assign({ansprechpartner:'',adressblock:'',motivationssatz:'',skillmatch:'',firmenbezug:'',notizen:''}, (q.bausteine && typeof q.bausteine==='object') ? q.bausteine : {});
   q.pdfDraft = Object.assign(defaultPdfDraft(), (q.pdfDraft && typeof q.pdfDraft==='object') ? q.pdfDraft : {});
   q.pdfDraft._set = q.pdfDraft._set && typeof q.pdfDraft._set==='object' ? q.pdfDraft._set : {};
+  q.pdfDraft._omit = q.pdfDraft._omit && typeof q.pdfDraft._omit==='object' ? q.pdfDraft._omit : {};
   Object.keys(q.returns).forEach(function(k){
     if(q.returns[k] && !q.rawReturns[k]) q.rawReturns[k]=q.returns[k];
   });
@@ -2167,7 +2199,7 @@ function getStepHandoffDataSchema(si){
     0:{urteil:'✅ GEEIGNET | 🟡 POTENZIELL | ⚠️ UNKLAR | ❌ UNGEEIGNET',stichpunkte:[],begruendung:'',quellen:[],unsicherheiten:[]},
     1:{ansprechpartner:'',anrede:'',email:'',telefon:'',adresse:'',quellen:[],unsicherheiten:[]},
     2:{stichpunkte_roh:'',kernkompetenzen:[],it_fokus:[],ausbildung_praktikum_hinweise:[],besonderheit:'',quellen:[],unsicherheiten:[]},
-    3:{standardEinleitungOverride:'',firmenspezifischerSatz:'',standardMotivationOverride:'',standardProjekteOverride:'',standardSchlussOverride:'',notizen:'',quellenOderAnnahmen:[]},
+    3:{standardEinleitungOverride:'',standardEinleitungOmit:false,firmenspezifischerSatz:'',standardMotivationOverride:'',standardMotivationOmit:false,standardProjekteOverride:'',standardProjekteOmit:false,standardSchlussOverride:'',standardSchlussOmit:false,notizen:'',quellenOderAnnahmen:[]},
     4:{pflichtpruefung:{umschulung:false,ausbildungsberuf:false,zeitraum:false,pflichtpraktikum:false,unternehmen_standort:false},faktencheck:{firma_existiert:false,adresse_geprueft:false,taetigkeitsfeld_passend:false},urteil:'',korrekturen:[],quellen:[],kurzbegruendung:''},
     6:{mailtext:'',betreff:'',empfaengerEmail:'',anrede:'',notizen:''},
     7:{bewerbungsDatum:'',trackingText:'',statusUpdate:'',notizen:''}
@@ -2190,6 +2222,7 @@ function getStepHandoffPrompt(si, f){
   };
   return 'Dieser Prompt wird erst am Ende unseres Arbeitschats verwendet. Gib AUSSCHLIESSLICH ein gültiges JSON-Objekt aus, ohne Markdown, Codeblock oder Erläuterungen.\n'
     +'Übernimm nur im Gespräch geklärte Informationen und verwende ausschließlich die Felder des Schemas. Bei Recherche dürfen Quellen und Unsicherheiten leer bleiben, müssen aber wahrheitsgemäß sein. '
+    +(si===3?'Für Standardblock-Overrides gilt: Leere Override-Felder bedeuten globalen Standardblock verwenden / keine Custom-Änderung. Bewusstes Auslassen nur über das jeweilige Omit-Boolean-Feld true setzen. Nicht-leere Override-Felder sind Custom-Texte. ':'')
     +'nextSteps ist optional und soll nur echte, konkrete Handlungen enthalten; sonst gib ein leeres Array aus. Datumswerte nur sicher als YYYY-MM-DD angeben.\n\n'
     +'Schema für den Reimport in den Bewerbungstracker:\n'+JSON.stringify(payload,null,2);
 }
@@ -2285,7 +2318,7 @@ function pickHandoffData(si, data){
     0:['urteil','stichpunkte','begruendung','quellen','unsicherheiten'],
     1:['ansprechpartner','anrede','email','telefon','adresse','quellen','unsicherheiten'],
     2:['stichpunkte_roh','kernkompetenzen','it_fokus','ausbildung_praktikum_hinweise','besonderheit','quellen','unsicherheiten'],
-    3:['standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride','notizen','quellenOderAnnahmen'],
+    3:['standardEinleitungOverride','standardEinleitungOmit','firmenspezifischerSatz','standardMotivationOverride','standardMotivationOmit','standardProjekteOverride','standardProjekteOmit','standardSchlussOverride','standardSchlussOmit','notizen','quellenOderAnnahmen'],
     4:['pflichtpruefung','faktencheck','urteil','korrekturen','quellen','kurzbegruendung'],
     6:['mailtext','betreff','empfaengerEmail','anrede','notizen'],
     7:['bewerbungsDatum','trackingText','statusUpdate','notizen']
@@ -2330,7 +2363,7 @@ async function importQuestStepHandoffJson(raw){
   } else if(si===1){
     ['ansprechpartner','anrede','email','telefon','adresse'].forEach(function(key){
       var value=handoffString(data,key);
-      if(value!==null&&value.trim()) q.contact[key]=value.replace(/\\n/g,'\n').trim();
+      if(value!==null&&value.trim()) q.contact[key]=(key==='email'?normalizeEmailInput(value):value.replace(/\\n/g,'\n').trim());
     });
     if(q.contact.ansprechpartner){f.ansprechpartner=q.contact.ansprechpartner;q.bausteine.ansprechpartner=q.contact.ansprechpartner;}
     if(q.contact.anrede) f.anrede=q.contact.anrede;
@@ -2350,15 +2383,37 @@ async function importQuestStepHandoffJson(raw){
     changed.push('Firmenprofil');
   } else if(si===3){
     var draftKeys=['standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'];
-    draftKeys.forEach(function(key){
+    STANDARD_PDF_OVERRIDE_KEYS.forEach(function(key){
+      var omitKey=PDF_OVERRIDE_TO_OMIT_KEY[key];
       if(handoffOwn(data,key)){
-        q.pdfDraft[key]=String(data[key]===null?'':data[key]);
-        q.pdfDraft._set[key]=true;
-        changed.push(key);
+        var value=String(data[key]===null?'':data[key]);
+        if(value.trim()){
+          q.pdfDraft[key]=value;
+          q.pdfDraft._set[key]=true;
+          delete q.pdfDraft._omit[key];
+          changed.push(key);
+        } else {
+          q.pdfDraft[key]='';
+          delete q.pdfDraft._set[key];
+        }
+      }
+      if(handoffOwn(data,omitKey)){
+        if(data[omitKey]===true){ q.pdfDraft._omit[key]=true; delete q.pdfDraft._set[key]; q.pdfDraft[key]=''; changed.push(omitKey); }
+        else delete q.pdfDraft._omit[key];
       }
     });
-    if(handoffOwn(data,'firmenspezifischerSatz')&&String(data.firmenspezifischerSatz||'').trim()) f.anschreibenSatz=String(data.firmenspezifischerSatz).trim();
-    q.extracted[si]=handoffSummary(data,draftKeys.concat(['notizen','quellenOderAnnahmen']));
+    if(handoffOwn(data,'firmenspezifischerSatz')){
+      var fsValue=String(data.firmenspezifischerSatz===null?'':data.firmenspezifischerSatz);
+      if(fsValue.trim()){
+        q.pdfDraft.firmenspezifischerSatz=fsValue;
+        q.pdfDraft._set.firmenspezifischerSatz=true;
+        f.anschreibenSatz=fsValue.trim();
+        changed.push('firmenspezifischerSatz');
+      } else {
+        delete q.pdfDraft._set.firmenspezifischerSatz;
+      }
+    }
+    q.extracted[si]=handoffSummary(data,draftKeys.concat(['standardEinleitungOmit','standardMotivationOmit','standardProjekteOmit','standardSchlussOmit','notizen','quellenOderAnnahmen']));
   } else if(si===4){
     var ppKeys=['umschulung','ausbildungsberuf','zeitraum','pflichtpraktikum','unternehmen_standort'];
     var fcKeys=['firma_existiert','adresse_geprueft','taetigkeitsfeld_passend'];
@@ -2394,9 +2449,17 @@ async function importQuestStepHandoffJson(raw){
     var title=String(step.title||'').trim(), details=String(step.details||'').trim();
     if(!title&&!details) return;
     var source=String(step.source||'').trim()==='email'?'email':'quest-handoff';
+    var dueDate=validIsoDate(step.dueDate), status=normalizeNextStepStatus(step.status);
+    var sig=[title.toLowerCase(),details.toLowerCase(),dueDate,status,source].join('|');
+    var exists=(f.nextSteps||[]).some(function(existing){
+      var exSource=String(existing.source||'').trim()==='email'?'email':'quest-handoff';
+      if(['email','quest-handoff'].indexOf(exSource)===-1) return false;
+      return [String(existing.title||'').trim().toLowerCase(),String(existing.details||'').trim().toLowerCase(),String(existing.dueDate||''),String(existing.status||''),exSource].join('|')===sig;
+    });
+    if(exists) return;
     f.nextSteps.push(Object.assign(defaultNextStep(),{
       id:uid(), title:title, details:details, source:source, sourceDate:'',
-      dueDate:validIsoDate(step.dueDate), status:normalizeNextStepStatus(step.status),
+      dueDate:dueDate, status:status,
       priority:normalizeNextStepPriority(step.priority), createdAt:nowIso, updatedAt:nowIso
     }));
     tasks++;
@@ -2624,6 +2687,7 @@ function prefillPdfDraft(forceOverwrite){
   f.quest=ensureQuestDefaults(f.quest);
   var draft=f.quest.pdfDraft||defaultPdfDraft();
   if(!draft._set||typeof draft._set!=='object') draft._set={};
+  if(!draft._omit||typeof draft._omit!=='object') draft._omit={};
   var pre=getPdfDraftPrefillValues(f);
   var changed=false;
   ['datum','adressblock','anredezeile','firmenspezifischerSatz'].forEach(function(k){
@@ -2635,9 +2699,10 @@ function prefillPdfDraft(forceOverwrite){
   });
   if(forceOverwrite){
     ['standardEinleitungOverride','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'].forEach(function(k){
-      if(draft._set[k] || draft[k]) changed=true;
+      if(draft._set[k] || draft._omit[k] || draft[k]) changed=true;
       draft[k]='';
       delete draft._set[k];
+      delete draft._omit[k];
     });
   }
   f.quest.pdfDraft=draft;
@@ -2651,6 +2716,7 @@ function savePdfDraftField(key){
   f.quest=ensureQuestDefaults(f.quest);
   if(!f.quest.pdfDraft) f.quest.pdfDraft=defaultPdfDraft();
   if(!f.quest.pdfDraft._set||typeof f.quest.pdfDraft._set!=='object') f.quest.pdfDraft._set={};
+  if(!f.quest.pdfDraft._omit||typeof f.quest.pdfDraft._omit!=='object') f.quest.pdfDraft._omit={};
   var idMap={
     datum:'pdfd-datum', adressblock:'pdfd-adressblock', anredezeile:'pdfd-anrede',
     standardEinleitungOverride:'pdfd-standard-einleitung', firmenspezifischerSatz:'pdfd-fsatz',
@@ -2658,10 +2724,43 @@ function savePdfDraftField(key){
     standardSchlussOverride:'pdfd-standard-schluss'
   };
   var el=document.getElementById(idMap[key]); if(!el) return;
-  f.quest.pdfDraft[key]=String(el.value||'');
-  f.quest.pdfDraft._set[key]=true;
+  var value=String(el.value||'');
+  if(isStandardPdfOverrideKey(key)){
+    f.quest.pdfDraft[key]=value.trim()?value:'';
+    if(value.trim()){
+      f.quest.pdfDraft._set[key]=true;
+      delete f.quest.pdfDraft._omit[key];
+    } else {
+      delete f.quest.pdfDraft._set[key];
+      var omitEl=document.getElementById(getPdfDraftOmitInputId(key));
+      if(!(omitEl&&omitEl.checked)) delete f.quest.pdfDraft._omit[key];
+    }
+  } else {
+    f.quest.pdfDraft[key]=value;
+    f.quest.pdfDraft._set[key]=true;
+  }
   save();
-  refreshPdfDraftPreview();
+  renderPdfDraftSection(f);
+}
+
+function getPdfDraftOmitInputId(key){
+  return {
+    standardEinleitungOverride:'pdfd-omit-standard-einleitung',
+    standardMotivationOverride:'pdfd-omit-standard-motivation',
+    standardProjekteOverride:'pdfd-omit-standard-projekte',
+    standardSchlussOverride:'pdfd-omit-standard-schluss'
+  }[key]||'';
+}
+function togglePdfDraftOmit(key){
+  if(!isStandardPdfOverrideKey(key)) return;
+  var f=getFirm(activeQuestFirmId); if(!f) return;
+  f.quest=ensureQuestDefaults(f.quest);
+  var d=f.quest.pdfDraft;
+  var el=document.getElementById(getPdfDraftOmitInputId(key));
+  if(el&&el.checked){ d._omit[key]=true; delete d._set[key]; d[key]=''; }
+  else { delete d._omit[key]; }
+  save();
+  renderPdfDraftSection(f);
 }
 
 function getFinalLetterModel(f){
@@ -2678,7 +2777,9 @@ function getFinalLetterModel(f){
   var cfg=getCfg();
   var profile=getEffectiveProfileTextBlocks();
   function pickTextBlock(overrideKey, profileKey){
-    return (setMap[overrideKey]?String(d[overrideKey]||''):String(profile[profileKey]||'')).trim();
+    if(isPdfDraftOmitted(d,overrideKey)) return '';
+    if(hasNonEmptyPdfDraftOverride(d,overrideKey)) return String(d[overrideKey]||'').trim();
+    return String(profile[profileKey]||'').trim();
   }
   return {
     datum:pickDraftValue('datum').trim(),
@@ -2701,20 +2802,27 @@ function renderPdfDraftSection(f){
   var setMap=(d._set&&typeof d._set==='object')?d._set:{};
   var pre=getPdfDraftPrefillValues(f);
   function fieldValue(key){
+    if(isStandardPdfOverrideKey(key)) return hasNonEmptyPdfDraftOverride(d,key)?String(d[key]||''):'';
     if(setMap[key]) return String(d[key]||'');
-    if(/Override$/.test(key)) return pre[key]||'';
     if(d[key]===undefined||d[key]===null) return pre[key]||'';
     if(String(d[key]).trim()!=='') return String(d[key]);
     return pre[key]||'';
   }
+  function applyOmitState(key, textareaId){
+    var omitEl=document.getElementById(getPdfDraftOmitInputId(key));
+    var textEl=document.getElementById(textareaId);
+    var omitted=isPdfDraftOmitted(d,key);
+    if(omitEl) omitEl.checked=omitted;
+    if(textEl) textEl.disabled=omitted;
+  }
   var datumEl=document.getElementById('pdfd-datum'); if(datumEl) datumEl.value=fieldValue('datum');
   var addrEl=document.getElementById('pdfd-adressblock'); if(addrEl) addrEl.value=fieldValue('adressblock');
   var anrEl=document.getElementById('pdfd-anrede'); if(anrEl) anrEl.value=fieldValue('anredezeile');
-  var introEl=document.getElementById('pdfd-standard-einleitung'); if(introEl) introEl.value=fieldValue('standardEinleitungOverride');
+  var introEl=document.getElementById('pdfd-standard-einleitung'); if(introEl) introEl.value=fieldValue('standardEinleitungOverride'); applyOmitState('standardEinleitungOverride','pdfd-standard-einleitung');
   var fsEl=document.getElementById('pdfd-fsatz'); if(fsEl) fsEl.value=fieldValue('firmenspezifischerSatz');
-  var motivationEl=document.getElementById('pdfd-standard-motivation'); if(motivationEl) motivationEl.value=fieldValue('standardMotivationOverride');
-  var projectsEl=document.getElementById('pdfd-standard-projekte'); if(projectsEl) projectsEl.value=fieldValue('standardProjekteOverride');
-  var closeEl=document.getElementById('pdfd-standard-schluss'); if(closeEl) closeEl.value=fieldValue('standardSchlussOverride');
+  var motivationEl=document.getElementById('pdfd-standard-motivation'); if(motivationEl) motivationEl.value=fieldValue('standardMotivationOverride'); applyOmitState('standardMotivationOverride','pdfd-standard-motivation');
+  var projectsEl=document.getElementById('pdfd-standard-projekte'); if(projectsEl) projectsEl.value=fieldValue('standardProjekteOverride'); applyOmitState('standardProjekteOverride','pdfd-standard-projekte');
+  var closeEl=document.getElementById('pdfd-standard-schluss'); if(closeEl) closeEl.value=fieldValue('standardSchlussOverride'); applyOmitState('standardSchlussOverride','pdfd-standard-schluss');
   refreshPdfDraftPreview();
 }
 
@@ -3301,7 +3409,7 @@ function saveNormalized(si) {
       f.quest.contact={
         ansprechpartner:jo2.ansprechpartner||'',
         anrede:jo2.anrede||'Sehr geehrte Damen und Herren',
-        email:jo2.email||'',
+        email:normalizeEmailInput(jo2.email||''),
         telefon:jo2.telefon||'',
         adresse:(jo2.adresse||'').replace(/\\n/g,'\n')
       };
@@ -3664,7 +3772,7 @@ function toggleFC(id){
   if(!open) openFirms[String(id)]=true; else delete openFirms[String(id)];
 }
 function updF(id,field,val){
-  var f=getFirm(id); if(!f) return; f[field]=val; save();
+  var f=getFirm(id); if(!f) return; f[field]=(field==='email'?normalizeEmailInput(val):val); save();
 }
 function addFirm(){ var f=newFirm('Neue Firma'); clearFirmDeletion(f.id); S.firms.unshift(f); save(); openFirms[String(f.id)]=true; renderDB(); toast('Neuer Eintrag.'); }
 function delFirm(id){ if(!confirm('Eintrag löschen?')) return; recordFirmDeletion(id); S.firms=S.firms.filter(function(f){return String(f.id)!==String(id);}); delete openFirms[String(id)]; save(); renderDB(); drawMap(); toast('Gelöscht.'); }
@@ -4519,15 +4627,33 @@ function mergeQuest(localQ, remoteQ){
   q.bausteine = Object.assign({}, l.bausteine||{}, r.bausteine||{});
   BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
   q.pdfDraft = defaultPdfDraft();
-  q.pdfDraft._set = Object.assign({}, (l.pdfDraft&&l.pdfDraft._set)||{}, (r.pdfDraft&&r.pdfDraft._set)||{});
+  q.pdfDraft._set = {};
+  q.pdfDraft._omit = {};
   ['datum','adressblock','anredezeile','standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'].forEach(function(k){
+    var lValue=String((l.pdfDraft&&l.pdfDraft[k])||'');
+    var rValue=String((r.pdfDraft&&r.pdfDraft[k])||'');
     var lSet=!!(l.pdfDraft&&l.pdfDraft._set&&l.pdfDraft._set[k]);
     var rSet=!!(r.pdfDraft&&r.pdfDraft._set&&r.pdfDraft._set[k]);
-    if(rSet) q.pdfDraft[k]=String((r.pdfDraft&&r.pdfDraft[k])||'');
-    else if(lSet) q.pdfDraft[k]=String((l.pdfDraft&&l.pdfDraft[k])||'');
-    else if(r.pdfDraft&&r.pdfDraft[k]) q.pdfDraft[k]=r.pdfDraft[k];
-    else if(l.pdfDraft&&l.pdfDraft[k]) q.pdfDraft[k]=l.pdfDraft[k];
-    else q.pdfDraft[k]='';
+    if(isStandardPdfOverrideKey(k)){
+      var lCustom=lSet&&lValue.trim();
+      var rCustom=rSet&&rValue.trim();
+      if(rCustom){
+        q.pdfDraft[k]=rValue;
+        q.pdfDraft._set[k]=true;
+      } else if(lCustom){
+        q.pdfDraft[k]=lValue;
+        q.pdfDraft._set[k]=true;
+      } else {
+        q.pdfDraft[k]=(rValue.trim()?rValue:(lValue.trim()?lValue:''));
+        if((r.pdfDraft&&r.pdfDraft._omit&&r.pdfDraft._omit[k])||(l.pdfDraft&&l.pdfDraft._omit&&l.pdfDraft._omit[k])) q.pdfDraft._omit[k]=true;
+      }
+    } else {
+      if(rSet){ q.pdfDraft[k]=rValue; q.pdfDraft._set[k]=true; }
+      else if(lSet){ q.pdfDraft[k]=lValue; q.pdfDraft._set[k]=true; }
+      else if(rValue) q.pdfDraft[k]=rValue;
+      else if(lValue) q.pdfDraft[k]=lValue;
+      else q.pdfDraft[k]='';
+    }
   });
   return ensureQuestDefaults(q);
 }
