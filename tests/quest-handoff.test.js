@@ -4,13 +4,14 @@ const vm = require('vm');
 
 const html = fs.readFileSync('index.html', 'utf8');
 const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]).join('\n');
-const defaultsStart = script.indexOf('function defaultPdfDraft');
+const defaultsStart = script.indexOf('var STANDARD_PDF_OVERRIDE_KEYS');
 const defaultsEnd = script.indexOf('function defaultProfileTextBlocks', defaultsStart);
 const defaultsContext = { Object, String };
 vm.createContext(defaultsContext);
 new vm.Script(script.slice(defaultsStart, defaultsEnd), { filename: 'index.html:quest-defaults' }).runInContext(defaultsContext);
 assert.deepStrictEqual(Object.keys(defaultsContext.defaultQuest().stepChatLinks), []);
 assert.strictEqual(defaultsContext.defaultQuest().contact.telefon, '');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(defaultsContext.defaultPdfDraft()._omit)), {});
 assert.deepStrictEqual(Object.keys(defaultsContext.ensureQuestDefaults({}).stepChatLinks), []);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(defaultsContext.ensureQuestDefaults({ stepChatLinks: { 1: 'https://chat.example/legacy' } }).stepChatLinks[1])),
@@ -36,7 +37,7 @@ const firm = {
     contact: { ansprechpartner: '', anrede: '', email: '', telefon: '', adresse: '' },
     verdict: '', stepStatus: { 2: 'Rohentwurf' }, stepChatLinks: {},
     bausteine: { ansprechpartner: '', adressblock: '', motivationssatz: '', skillmatch: '', firmenbezug: '', notizen: '' },
-    pdfDraft: { _set: {} }
+    pdfDraft: { _set: {}, _omit: {} }
   }
 };
 const elements = {};
@@ -64,6 +65,12 @@ const context = {
   getFirmLocation: firmValue => firmValue.region || 'Ort',
   getCfg: () => ({ beruf: 'Fachinformatiker für Anwendungsentwicklung', traeger: 'IBB AG', von: '10.08.2026', bis: '02.04.2027' }),
   getProfileTextBlocks: () => ({ standardEinleitung: 'Standard', standardMotivation: '', standardProjekte: '', standardSchluss: '' }),
+  STANDARD_PDF_OVERRIDE_KEYS: defaultsContext.STANDARD_PDF_OVERRIDE_KEYS,
+  PDF_OVERRIDE_TO_OMIT_KEY: defaultsContext.PDF_OVERRIDE_TO_OMIT_KEY,
+  isStandardPdfOverrideKey: defaultsContext.isStandardPdfOverrideKey,
+  isPdfDraftOmitted: defaultsContext.isPdfDraftOmitted,
+  hasNonEmptyPdfDraftOverride: defaultsContext.hasNonEmptyPdfDraftOverride,
+  normalizeEmailInput: defaultsContext.normalizeEmailInput,
   defaultPdfDraft: defaultsContext.defaultPdfDraft,
   defaultQuest: defaultsContext.defaultQuest,
   ensureQuestDefaults: defaultsContext.ensureQuestDefaults,
@@ -118,6 +125,8 @@ const handoffPrompt = context.getStepHandoffPrompt(3, firm);
 assert(handoffPrompt.includes('bewerbungstracker-quest-step-handoff-v1'));
 assert(handoffPrompt.includes('standardEinleitungOverride'));
 assert(handoffPrompt.includes('firmenspezifischerSatz'));
+assert(handoffPrompt.includes('standardEinleitungOmit'));
+assert(handoffPrompt.includes('Leere Override-Felder bedeuten'));
 
 (async () => {
   await context.saveStepChatLink(2, firm.id);
@@ -137,11 +146,14 @@ assert(handoffPrompt.includes('firmenspezifischerSatz'));
     firmName: firm.name,
     stepIndex: 1,
     stepName: 'Kontaktdaten',
-    data: { ansprechpartner: '', anrede: '', email: '', telefon: '+49 441 123456', adresse: '', quellen: [], unsicherheiten: [] },
+    data: { ansprechpartner: '', anrede: '', email: '[name@example.com](mailto:name@example.com)', telefon: '+49 441 123456', adresse: '', quellen: [], unsicherheiten: [] },
     nextSteps: []
   }));
   assert.strictEqual(firm.quest.contact.telefon, '+49 441 123456');
   assert.strictEqual(firm.telefon, '+49 441 123456');
+  assert.strictEqual(firm.quest.contact.email, 'name@example.com');
+  assert.strictEqual(firm.email, 'name@example.com');
+  assert.strictEqual(context.normalizeEmailInput('mailto:name@example.com'), 'name@example.com');
 
   await context.importQuestStepHandoffJson(JSON.stringify({
     type: 'bewerbungstracker-quest-step-handoff-v1',
@@ -164,13 +176,30 @@ assert(handoffPrompt.includes('firmenspezifischerSatz'));
   assert.strictEqual(firm.quest.stepChatLinks[3].url, 'https://chat.example/anschreiben');
   assert(firm.quest.stepChatLinks[3].updatedAt);
   assert.strictEqual(firm.quest.pdfDraft.standardEinleitungOverride, '');
-  assert.strictEqual(firm.quest.pdfDraft._set.standardEinleitungOverride, true, 'Bewusst leerer Override muss als gesetzt gelten');
+  assert.strictEqual(firm.quest.pdfDraft._set.standardEinleitungOverride, undefined, 'Leerer Override darf nicht als gesetzt gelten');
   assert.strictEqual(firm.quest.pdfDraft.firmenspezifischerSatz, 'Passender Firmensatz.');
   assert.strictEqual(firm.quest.stepStatus[3], 'geprüft');
   assert(!firm.quest.normalizedReturns[3].includes('unbekanntesFeld'), 'Unbekannte Felder dürfen nicht übernommen werden');
   assert.strictEqual(firm.nextSteps.length, 1);
   assert.strictEqual(firm.nextSteps[0].source, 'quest-handoff');
   assert.strictEqual(firm.nextSteps[0].priority, 'hoch');
+
+  await context.importQuestStepHandoffJson(JSON.stringify({
+    type: 'bewerbungstracker-quest-step-handoff-v1', firmId: firm.id, firmName: firm.name,
+    stepIndex: 3, stepName: 'Anschreiben generieren',
+    data: { standardEinleitungOverride: 'Custom', standardEinleitungOmit: false },
+    nextSteps: [{ title: 'Unterlagen prüfen', details: '', dueDate: '2026-06-10', priority: 'hoch', status: 'offen' }]
+  }));
+  assert.strictEqual(firm.quest.pdfDraft.standardEinleitungOverride, 'Custom');
+  assert.strictEqual(firm.quest.pdfDraft._set.standardEinleitungOverride, true);
+  assert.strictEqual(firm.nextSteps.length, 1, 'Identische Next Steps dürfen nicht doppelt angelegt werden');
+
+  await context.importQuestStepHandoffJson(JSON.stringify({
+    type: 'bewerbungstracker-quest-step-handoff-v1', firmId: firm.id, firmName: firm.name,
+    stepIndex: 3, stepName: 'Anschreiben generieren',
+    data: { standardEinleitungOmit: true }, nextSteps: []
+  }));
+  assert.strictEqual(firm.quest.pdfDraft._omit.standardEinleitungOverride, true);
 
   firm.quest.stepChatLinks[7] = { url: 'https://chat.example/existing-tracking', updatedAt: '2026-06-08T08:00:00.000Z' };
   await context.importQuestStepHandoffJson(JSON.stringify({
