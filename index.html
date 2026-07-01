@@ -4627,18 +4627,33 @@ function mergeQuest(localQ, remoteQ){
   q.bausteine = Object.assign({}, l.bausteine||{}, r.bausteine||{});
   BAUSTEIN_KEYS.forEach(function(k){ if(!q.bausteine[k]) q.bausteine[k]=(l.bausteine&&l.bausteine[k])||''; });
   q.pdfDraft = defaultPdfDraft();
-  q.pdfDraft._set = Object.assign({}, (l.pdfDraft&&l.pdfDraft._set)||{}, (r.pdfDraft&&r.pdfDraft._set)||{});
-  q.pdfDraft._omit = Object.assign({}, (l.pdfDraft&&l.pdfDraft._omit)||{}, (r.pdfDraft&&r.pdfDraft._omit)||{});
+  q.pdfDraft._set = {};
+  q.pdfDraft._omit = {};
   ['datum','adressblock','anredezeile','standardEinleitungOverride','firmenspezifischerSatz','standardMotivationOverride','standardProjekteOverride','standardSchlussOverride'].forEach(function(k){
+    var lValue=String((l.pdfDraft&&l.pdfDraft[k])||'');
+    var rValue=String((r.pdfDraft&&r.pdfDraft[k])||'');
     var lSet=!!(l.pdfDraft&&l.pdfDraft._set&&l.pdfDraft._set[k]);
     var rSet=!!(r.pdfDraft&&r.pdfDraft._set&&r.pdfDraft._set[k]);
-    if(isStandardPdfOverrideKey(k)&&!String((l.pdfDraft&&l.pdfDraft[k])||'').trim()){ delete q.pdfDraft._set[k]; lSet=false; }
-    if(isStandardPdfOverrideKey(k)&&!String((r.pdfDraft&&r.pdfDraft[k])||'').trim()){ delete q.pdfDraft._set[k]; rSet=false; }
-    if(rSet) q.pdfDraft[k]=String((r.pdfDraft&&r.pdfDraft[k])||'');
-    else if(lSet) q.pdfDraft[k]=String((l.pdfDraft&&l.pdfDraft[k])||'');
-    else if(r.pdfDraft&&r.pdfDraft[k]) q.pdfDraft[k]=r.pdfDraft[k];
-    else if(l.pdfDraft&&l.pdfDraft[k]) q.pdfDraft[k]=l.pdfDraft[k];
-    else q.pdfDraft[k]='';
+    if(isStandardPdfOverrideKey(k)){
+      var lCustom=lSet&&lValue.trim();
+      var rCustom=rSet&&rValue.trim();
+      if(rCustom){
+        q.pdfDraft[k]=rValue;
+        q.pdfDraft._set[k]=true;
+      } else if(lCustom){
+        q.pdfDraft[k]=lValue;
+        q.pdfDraft._set[k]=true;
+      } else {
+        q.pdfDraft[k]=(rValue.trim()?rValue:(lValue.trim()?lValue:''));
+        if((r.pdfDraft&&r.pdfDraft._omit&&r.pdfDraft._omit[k])||(l.pdfDraft&&l.pdfDraft._omit&&l.pdfDraft._omit[k])) q.pdfDraft._omit[k]=true;
+      }
+    } else {
+      if(rSet){ q.pdfDraft[k]=rValue; q.pdfDraft._set[k]=true; }
+      else if(lSet){ q.pdfDraft[k]=lValue; q.pdfDraft._set[k]=true; }
+      else if(rValue) q.pdfDraft[k]=rValue;
+      else if(lValue) q.pdfDraft[k]=lValue;
+      else q.pdfDraft[k]='';
+    }
   });
   return ensureQuestDefaults(q);
 }
