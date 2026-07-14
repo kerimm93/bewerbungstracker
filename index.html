@@ -38,6 +38,7 @@ body{
     radial-gradient(ellipse at 80% 20%,rgba(52,152,219,.06) 0%,transparent 50%);
 }
 #app{max-width:900px;margin:0 auto;padding:12px;}
+@media(min-width:1200px){#app.app--batch-wide{max-width:min(1600px,calc(100vw - 32px));}}
 
 /* === HEADER === */
 .htbox{
@@ -539,12 +540,14 @@ textarea{resize:vertical;min-height:80px;}
 .batch-card{border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,.18);padding:10px;min-width:0;}
 .batch-card.empty{border-style:dashed;background:rgba(0,0,0,.10);}
 .batch-card-head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
-.batch-title{font-weight:800;color:var(--ink);font-size:13px;line-height:1.25;}
-.batch-meta{font-size:11px;color:var(--ink-light);line-height:1.35;margin-top:2px;}
-.batch-progress{font-size:11px;color:var(--teal);font-weight:700;margin:8px 0;}
-.batch-step-box{border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(0,0,0,.14);margin-top:8px;}
+.batch-card-head > div{min-width:0;}
+.batch-title{font-weight:800;color:var(--ink);font-size:13px;line-height:1.25;overflow-wrap:anywhere;}
+.batch-meta{font-size:11px;color:var(--ink-light);line-height:1.35;margin-top:2px;overflow-wrap:anywhere;}
+.batch-progress{font-size:11px;color:var(--teal);font-weight:700;margin:8px 0;overflow-wrap:anywhere;}
+.batch-step-box{border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(0,0,0,.14);margin-top:8px;overflow-wrap:anywhere;}
 .batch-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
-.batch-field{margin-top:8px;}
+.batch-actions > .btn{max-width:100%;white-space:normal;}
+.batch-field{margin-top:8px;min-width:0;}
 .batch-field label{font-size:10px;color:var(--ink-light);text-transform:uppercase;letter-spacing:.04em;}
 .batch-field textarea{min-height:92px;}
 .batch-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--ink-light);}
@@ -1620,6 +1623,8 @@ function renderTabs() {
 
 function switchTab(id) {
   currentTab = id;
+  var app = document.getElementById('app');
+  if (app) app.classList.toggle('app--batch-wide', id==='batch');
   document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
   var panel = document.getElementById('panel-'+id);
   if (panel) panel.classList.add('active');
