@@ -531,6 +531,27 @@ textarea{resize:vertical;min-height:80px;}
 }
 .clean-prompt-box.vis{display:block;}
 
+/* === QUEST BATCH MODE === */
+.batch-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+.batch-slot-select{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.batch-slot-select button.active{box-shadow:0 0 0 2px rgba(26,188,156,.35) inset;}
+.batch-grid{display:grid;grid-template-columns:repeat(var(--batch-cols,2),minmax(0,1fr));gap:12px;}
+.batch-card{border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,.18);padding:10px;min-width:0;}
+.batch-card.empty{border-style:dashed;background:rgba(0,0,0,.10);}
+.batch-card-head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
+.batch-title{font-weight:800;color:var(--ink);font-size:13px;line-height:1.25;}
+.batch-meta{font-size:11px;color:var(--ink-light);line-height:1.35;margin-top:2px;}
+.batch-progress{font-size:11px;color:var(--teal);font-weight:700;margin:8px 0;}
+.batch-step-box{border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(0,0,0,.14);margin-top:8px;}
+.batch-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.batch-field{margin-top:8px;}
+.batch-field label{font-size:10px;color:var(--ink-light);text-transform:uppercase;letter-spacing:.04em;}
+.batch-field textarea{min-height:92px;}
+.batch-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--ink-light);}
+.batch-open-link{font-size:11px;color:var(--teal);cursor:pointer;text-decoration:underline;}
+@media(max-width:1199px){.batch-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}}
+@media(max-width:767px){.batch-grid{grid-template-columns:1fr !important;}}
+
 /* === GIST SYNC === */
 .sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .sync-status{
@@ -606,7 +627,7 @@ textarea{resize:vertical;min-height:80px;}
       <div id="quest-overview-wrap">
         <div id="next-quest-widget"></div>
         <div class="qs">
-          <div class="qh">⚔ Aktive Quests <div style="flex:1"></div><button class="btn btn-sm btn-v" onclick="switchTab('db')">+ Neue Firma →</button></div>
+          <div class="qh">⚔ Aktive Quests <div style="flex:1"></div><button class="btn btn-sm btn-q" onclick="switchTab('batch')">🪟 Batchmodus</button><button class="btn btn-sm btn-v" onclick="switchTab('db')">+ Neue Firma →</button></div>
           <div class="quest-overview" id="quest-overview"></div>
         </div>
       </div>
@@ -724,6 +745,23 @@ textarea{resize:vertical;min-height:80px;}
             <div id="pdf-draft-preview" class="pdf-draft-preview"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- BATCH -->
+    <div class="panel" id="panel-batch">
+      <div class="qs">
+        <div class="qh">🪟 Batchmodus</div>
+        <div class="notice info">Mehrere Chats parallel vorbereiten; externe Tools öffnen sich in eigenen Tabs.</div>
+        <div class="batch-toolbar">
+          <div class="batch-slot-select">
+            <span style="font-size:12px;color:var(--ink-light);">Slots:</span>
+            <button type="button" class="btn btn-sm btn-w" data-batch-action="slot-count" data-slot-count="2">2</button>
+            <button type="button" class="btn btn-sm btn-w" data-batch-action="slot-count" data-slot-count="3">3</button>
+            <button type="button" class="btn btn-sm btn-w" data-batch-action="slot-count" data-slot-count="4">4</button>
+          </div>
+        </div>
+        <div id="batch-cards" class="batch-grid"></div>
       </div>
     </div>
 
@@ -1560,6 +1598,7 @@ function copyAddr(btn) {
 var TABS = [
   { id:'map',      label:'🗺 Karte' },
   { id:'quest',    label:'⚔ Quests' },
+  { id:'batch',    label:'🪟 Batch' },
   { id:'db',       label:'📋 Datenbank' },
   { id:'research', label:'🔭 Research' },
   { id:'mail',     label:'📬 Mail' },
@@ -1588,6 +1627,7 @@ function switchTab(id) {
   if (id==='map') { setTimeout(drawMap, 50); }
   if (id==='db') { renderDB(); renderDBRegionFilter(); }
   if (id==='quest') renderQuestOverview();
+  if (id==='batch') renderBatchMode();
   if (id==='research') renderResearchChips();
   if (id==='mail') renderMailPanel();
   if (id==='next') renderNextStepsPanel();
@@ -1945,20 +1985,25 @@ function revertQuestCompletion(){
   toast('Komplett-Abschluss zurückgenommen.');
 }
 
-function setStepDoneState(si,isDone){
-  var f=getFirm(activeQuestFirmId); if(!f) return;
+async function setStepDoneStateForFirm(si,fid,isDone){
+  var f=getFirm(fid); if(!f) return false;
+  f.quest=ensureQuestDefaults(f.quest);
   f.quest.done[si]=!!isDone;
   if(isDone) f.quest.stepStatus[si]='erledigt';
   else if(f.quest.stepStatus[si]==='erledigt') f.quest.stepStatus[si]='geprüft';
-  var g=document.getElementById('sg-'+si);
-  if(g){g.classList.toggle('cl',!!f.quest.done[si]);g.textContent=f.quest.done[si]?'✓':(si+1);}
-  var card=document.getElementById('ss-'+si);
-  if(card) card.classList.toggle('done',!!f.quest.done[si]);
-  var badge=card?card.querySelector('.sstatus'):null;
-  if(badge){var st=f.quest.stepStatus[si]||'offen';badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
-  updateProgress(f); updateMomentumModule(f); updateMobileBar(f); save(); renderQuestOverview(); drawMap();
+  if(String(fid)===String(activeQuestFirmId)){
+    var g=document.getElementById('sg-'+si);
+    if(g){g.classList.toggle('cl',!!f.quest.done[si]);g.textContent=f.quest.done[si]?'✓':(si+1);}
+    var card=document.getElementById('ss-'+si);
+    if(card) card.classList.toggle('done',!!f.quest.done[si]);
+    var badge=card?card.querySelector('.sstatus'):null;
+    if(badge){var st=f.quest.stepStatus[si]||'offen';badge.textContent=st;badge.className='sstatus '+({offen:'ss-offen',begonnen:'ss-begonnen','Rohentwurf':'ss-rohentwurf','geprüft':'ss-geprueft',erledigt:'ss-erledigt'}[st]||'ss-offen');}
+    updateProgress(f); updateMomentumModule(f); updateMobileBar(f);
+  }
+  var ok=await save(); renderQuestOverview(); drawMap(); renderBatchPanelIfPresent();
+  return ok;
 }
-
+function setStepDoneState(si,isDone){ setStepDoneStateForFirm(si,activeQuestFirmId,isDone); }
 function markStepDoneToggle(si){ setStepDoneState(si, !((getFirm(activeQuestFirmId)||{quest:{done:{}}}).quest.done[si])); }
 
 function completeLateStep(si){
@@ -2255,32 +2300,41 @@ function cycleStepStatus(si) {
   toast('Status: '+next);
 }
 
+async function setStepStartedForFirm(si,fid){
+  var f=getFirm(fid); if(!f) return false;
+  f.quest=ensureQuestDefaults(f.quest);
+  if((f.quest.stepStatus[si]||'offen')!=='offen') return true;
+  f.quest.stepStatus[si]='begonnen';
+  if(String(fid)===String(activeQuestFirmId)){
+    var badge=document.querySelector('#ss-'+si+' .sstatus');
+    if(badge){badge.textContent='begonnen';badge.className='sstatus ss-begonnen';}
+    updateProgress(f); updateMomentumModule(f);
+  }
+  var ok=await save(); renderQuestOverview(); drawMap(); renderBatchPanelIfPresent(); return ok;
+}
 function copyPromptAndSetStatus(si, fid, btn) {
   var f=getFirm(fid); if(!f) return;
   copyText(getStepStartPrompt(si,f),btn);
-  // Startchat begins the step, so auto-set status to "begonnen" if still offen.
-  if((f.quest.stepStatus[si]||'offen')==='offen') {
-    f.quest.stepStatus[si]='begonnen';
-    var badge=document.querySelector('#ss-'+si+' .sstatus');
-    if(badge){badge.textContent='begonnen';badge.className='sstatus ss-begonnen';}
-    updateProgress(f); updateMomentumModule(f); renderQuestOverview(); drawMap();
-    save();
-  }
+  setStepStartedForFirm(si,fid);
 }
 
 function copyHandoffPrompt(si, fid, btn){
   var f=getFirm(fid); if(!f||!isHandoffStep(si)) return;
   copyText(getStepHandoffPrompt(si,f),btn);
 }
-async function saveStepChatLink(si, fid){
-  var f=getFirm(fid); if(!f) return;
+async function saveStepChatLinkValue(si, fid, url){
+  var f=getFirm(fid); if(!f) return false;
   f.quest=ensureQuestDefaults(f.quest);
+  f.quest.stepChatLinks[si]={url:String(url||'').trim(),updatedAt:new Date().toISOString()};
+  if(!await save()) return false;
+  if(String(fid)===String(activeQuestFirmId)) renderQuestSteps(f);
+  renderBatchPanelIfPresent();
+  return true;
+}
+async function saveStepChatLink(si, fid){
   var input=document.getElementById('step-chat-link-'+si);
   if(!input) return;
-  f.quest.stepChatLinks[si]={url:String(input.value||'').trim(),updatedAt:new Date().toISOString()};
-  if(!await save()) return;
-  renderQuestSteps(f);
-  toast('Chat-Link gespeichert ✓');
+  if(await saveStepChatLinkValue(si,fid,input.value)) toast('Chat-Link gespeichert ✓');
 }
 function getStepChatUrl(si, fid){
   var f=getFirm(fid); if(!f) return '';
@@ -2327,7 +2381,7 @@ function pickHandoffData(si, data){
   (allowed[si]||[]).forEach(function(key){if(handoffOwn(data,key)) clean[key]=data[key];});
   return clean;
 }
-async function importQuestStepHandoffJson(raw){
+async function importQuestStepHandoffJson(raw,targetContext){
   var parsed=extractJSON(raw);
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) throw new Error('Kein gültiges JSON-Objekt erkannt.');
   if(parsed.type!==QUEST_HANDOFF_TYPE) throw new Error('Unbekannter Handoff-Typ. Erwartet: '+QUEST_HANDOFF_TYPE);
@@ -2337,7 +2391,10 @@ async function importQuestStepHandoffJson(raw){
   var f=parsed.firmId?getFirm(parsed.firmId):null;
   if(!f&&parsed.firmName) f=findByName(parsed.firmName);
   if(!f) throw new Error('Firma wurde weder über firmId noch über firmName gefunden.');
-  if(String(f.id)!==String(activeQuestFirmId)) throw new Error('Das Handoff gehört zu „'+f.name+'“. Bitte öffne diese Firma und importiere es dort.');
+  if(targetContext&&typeof targetContext==='object'){
+    if(String(f.id)!==String(targetContext.firmId)) throw new Error('Das Handoff gehört zu „'+f.name+'“ und passt nicht zum ausgewählten Batch-Slot.');
+    if(Number(si)!==Number(targetContext.stepIndex)) throw new Error('Das Handoff gehört zu Schritt '+(si+1)+' und passt nicht zum ausgewählten Schritt '+(Number(targetContext.stepIndex)+1)+'.');
+  } else if(String(f.id)!==String(activeQuestFirmId)) throw new Error('Das Handoff gehört zu „'+f.name+'“. Bitte öffne diese Firma und importiere es dort.');
   f.quest=ensureQuestDefaults(f.quest);
   var q=f.quest;
   var inputData=parsed.data;
@@ -2467,8 +2524,8 @@ async function importQuestStepHandoffJson(raw){
   q.stepStatus[si]='geprüft';
   if(!await save()) throw new Error('Daten wurden übernommen, konnten aber nicht sicher gespeichert werden. Bitte Emergency-Backup exportieren.');
   renderDB(); renderQuestOverview(); renderNextStepsPanel();
-  openSteps[si]=true; renderQuestSteps(f); updateStatusStrip(f); renderBausteine(f); updateMomentumModule(f); updateMobileBar(f); drawMap();
-  if(si===3) renderPdfDraftSection(f);
+  if(String(f.id)===String(activeQuestFirmId)){ openSteps[si]=true; renderQuestSteps(f); updateStatusStrip(f); renderBausteine(f); updateMomentumModule(f); updateMobileBar(f); if(si===3) renderPdfDraftSection(f); }
+  drawMap(); renderBatchPanelIfPresent();
   return {firm:f,stepIndex:si,changed:changed,tasks:tasks};
 }
 async function importQuestStepHandoffFromStep(si){
@@ -2476,9 +2533,106 @@ async function importQuestStepHandoffFromStep(si){
   var raw=ta?ta.value.trim():'';
   if(!raw){toast('Bitte Handoff-JSON einfügen.');return;}
   try{
-    var result=await importQuestStepHandoffJson(raw);
+    var result=await importQuestStepHandoffJson(raw,{firmId:activeQuestFirmId,stepIndex:si});
     toast('Handoff importiert: '+STEPS[result.stepIndex].name+(result.tasks?' · '+result.tasks+' Next Step(s)':'' )+' ✓',5000);
   }catch(e){toast('Handoff-Import fehlgeschlagen: '+String(e.message||e),6500);}
+}
+
+// ================================================================
+// QUEST BATCH MODE
+// ================================================================
+var BATCH_UI_STORAGE_KEY='fiae_quest_batch_ui_v1';
+var batchUiState=null;
+function getBatchEligibleFirms(){ return (S.firms||[]).filter(function(f){ return isQuestActiveForOverview?isQuestActiveForOverview(f):f.status!=='absage'&&f.status!=='zusage'; }); }
+function normalizeBatchStepIndex(value, firm){
+  var parsed=parseInt(value,10);
+  if(Number.isInteger(parsed)&&parsed>=0&&parsed<STEPS.length) return parsed;
+  var ns=firm?getNextStep(firm):null;
+  return ns&&Number.isInteger(ns.idx)&&ns.idx>=0&&ns.idx<STEPS.length?ns.idx:0;
+}
+function defaultBatchUiState(){
+  var slots=getBatchEligibleFirms().slice(0,2).map(function(f){return {firmId:String(f.id),stepIndex:normalizeBatchStepIndex(null,f)};});
+  while(slots.length<2) slots.push({firmId:'',stepIndex:''});
+  return {slotCount:2,slots:slots};
+}
+function normalizeBatchUiState(raw){
+  var input=raw&&typeof raw==='object'?raw:{};
+  var count=Math.max(2,Math.min(4,parseInt(input.slotCount,10)||2));
+  var valid={}; (S.firms||[]).forEach(function(f){if(f&&f.id!=null) valid[String(f.id)]=f;});
+  var seen={}, slots=[], inSlots=Array.isArray(input.slots)?input.slots:[];
+  for(var i=0;i<4;i++){
+    var slot=inSlots[i];
+    if(!slot||typeof slot!=='object'){ slots.push({firmId:'',stepIndex:''}); continue; }
+    var fid=String(slot.firmId||'');
+    if(!fid){ slots.push({firmId:'',stepIndex:''}); continue; }
+    if(!valid[fid]||seen[fid]){ slots.push({firmId:'',stepIndex:''}); continue; }
+    seen[fid]=true;
+    slots.push({firmId:fid,stepIndex:normalizeBatchStepIndex(slot.stepIndex,valid[fid])});
+  }
+  return {slotCount:count,slots:slots};
+}
+function loadBatchUiState(){
+  var raw=null; try{raw=JSON.parse(localStorage.getItem(BATCH_UI_STORAGE_KEY)||'null');}catch(e){raw=null;}
+  batchUiState=normalizeBatchUiState(raw||defaultBatchUiState()); return batchUiState;
+}
+function saveBatchUiState(){
+  if(!batchUiState) batchUiState=normalizeBatchUiState(defaultBatchUiState());
+  var clean={slotCount:batchUiState.slotCount,slots:(batchUiState.slots||[]).slice(0,4).map(function(s){var fid=String((s&&s.firmId)||''), f=fid?getFirm(fid):null;return {firmId:fid,stepIndex:fid?normalizeBatchStepIndex(s&&s.stepIndex,f):''};})};
+  try{localStorage.setItem(BATCH_UI_STORAGE_KEY,JSON.stringify(clean));}catch(e){}
+}
+function renderBatchPanelIfPresent(){ if(document.getElementById('batch-cards')) renderBatchMode(); }
+function setBatchSlotCount(count){
+  batchUiState=normalizeBatchUiState(batchUiState||loadBatchUiState());
+  var next=Math.max(2,Math.min(4,parseInt(count,10)||2));
+  batchUiState.slotCount=next;
+  while(batchUiState.slots.length<4) batchUiState.slots.push({firmId:'',stepIndex:''});
+  saveBatchUiState();
+  renderBatchMode();
+  return batchUiState;
+}
+function batchFirmOptions(selected){
+  var used={}; (batchUiState.slots||[]).forEach(function(s){ if(s&&s.firmId&&String(s.firmId)!==String(selected)) used[String(s.firmId)]=true; });
+  return '<option value="">— Firma wählen —</option>'+getBatchEligibleFirms().map(function(f){var dis=used[String(f.id)]?' disabled':'';return '<option value="'+esc(f.id)+'"'+(String(f.id)===String(selected)?' selected':'')+dis+'>'+esc(f.name)+' · '+esc(f.region||'')+'</option>';}).join('');
+}
+function renderBatchMode(){
+  var box=document.getElementById('batch-cards'); if(!box) return;
+  batchUiState=normalizeBatchUiState(batchUiState||loadBatchUiState()); saveBatchUiState();
+  document.querySelectorAll('[data-batch-action="slot-count"]').forEach(function(b){b.classList.toggle('active',Number(b.getAttribute('data-slot-count'))===batchUiState.slotCount);});
+  box.style.setProperty('--batch-cols',batchUiState.slotCount);
+  box.innerHTML=batchUiState.slots.slice(0,batchUiState.slotCount).map(function(slot,idx){
+    var f=slot.firmId?getFirm(slot.firmId):null;
+    if(!f) return '<div class="batch-card empty"><div class="batch-card-head"><div class="batch-title">Slot '+(idx+1)+'</div></div><select data-batch-action="firm" data-slot-index="'+idx+'">'+batchFirmOptions('')+'</select></div>';
+    f.quest=ensureQuestDefaults(f.quest); var ns=getNextStep(f), si=normalizeBatchStepIndex(slot.stepIndex,f), step=STEPS[si], chat=getStepChatUrl(si,f.id), hand=isHandoffStep(si), app=step.tool==='app';
+    return '<div class="batch-card"><div class="batch-card-head"><div><div class="batch-title">'+esc(f.name)+'</div><div class="batch-meta">'+esc(f.region||'—')+' · '+esc(f.status||'offen')+'</div></div><button class="btn btn-sm btn-w" data-batch-action="clear" data-slot-index="'+idx+'">Leeren</button></div>'
+      +'<select data-batch-action="firm" data-slot-index="'+idx+'">'+batchFirmOptions(f.id)+'</select>'
+      +'<div class="batch-progress">'+fmtProgress(questProgressValue(f))+'/8 · '+(ns?'Nächster Schritt: '+esc(STEPS[ns.idx].name):'Alle erledigt ✓')+'</div>'
+      +'<div class="batch-field"><label>Schritt</label><select data-batch-action="step" data-slot-index="'+idx+'">'+STEPS.map(function(st,i){return '<option value="'+i+'"'+(i===si?' selected':'')+'>'+esc((i+1)+'. '+st.name)+'</option>';}).join('')+'</select></div>'
+      +'<div class="batch-step-box"><strong>'+esc(step.name)+'</strong><div class="batch-meta">'+esc(step.tl||step.tool)+' · '+esc(step.desc||'')+'</div><div class="batch-status">Status: '+esc(f.quest.stepStatus[si]||'offen')+'</div></div>'
+      +'<div class="batch-actions"><button class="btn btn-q btn-sm" data-batch-action="copy-start" data-slot-index="'+idx+'">Startchat-Prompt kopieren</button>'
+      +(hand?'<button class="btn btn-m btn-sm" data-batch-action="copy-handoff" data-slot-index="'+idx+'">Handoff-Prompt kopieren</button>':'')
+      +(app?'<span class="batch-status">Direkt in der App</span>':'<button class="btn btn-w btn-sm" data-batch-action="open-tool" data-slot-index="'+idx+'">'+esc(step.tl||'Tool')+' öffnen ↗</button>')
+      +'<button class="btn btn-v btn-sm" data-batch-action="toggle-done" data-slot-index="'+idx+'">'+(f.quest.done[si]?'↩ Erledigt zurücknehmen':'✓ Als erledigt markieren')+'</button><span class="batch-open-link" data-batch-action="open-full" data-slot-index="'+idx+'">Vollständige Quest öffnen</span></div>'
+      +(isStepChatLinkRelevant(si)?'<div class="batch-field"><label>Arbeitschat-Link</label><input type="url" data-batch-role="chat-url" data-slot-index="'+idx+'" value="'+esc(chat)+'" placeholder="https://…"><div class="batch-actions"><button class="btn btn-v btn-sm" data-batch-action="save-chat" data-slot-index="'+idx+'">Speichern</button>'+(chat?'<button class="btn btn-w btn-sm" data-batch-action="open-chat" data-slot-index="'+idx+'">Öffnen ↗</button><button class="btn btn-w btn-sm" data-batch-action="copy-chat" data-slot-index="'+idx+'">Kopieren</button>':'')+'</div></div>':'')
+      +(hand?'<div class="batch-field"><label>Handoff-JSON</label><textarea data-batch-role="handoff-json" data-slot-index="'+idx+'" placeholder="Handoff-JSON für '+esc(step.name)+' einfügen …"></textarea><div class="batch-actions"><button class="btn btn-v btn-sm" data-batch-action="import-handoff" data-slot-index="'+idx+'">📥 Handoff importieren</button></div></div>':'')+'</div>';
+  }).join('');
+  var root=document.getElementById('panel-batch')||box;
+  if(!root._batchBound){ root.addEventListener('click',handleBatchClick); root.addEventListener('change',handleBatchChange); root._batchBound=true; }
+}
+function renderBatchPanel(){ renderBatchMode(); }
+function getBatchSlot(idx){ batchUiState=normalizeBatchUiState(batchUiState||loadBatchUiState()); return batchUiState.slots[Number(idx)]||{firmId:'',stepIndex:''}; }
+function handleBatchChange(ev){ var el=ev.target&&ev.target.closest?ev.target.closest('[data-batch-action]'):ev.target; var a=el&&el.getAttribute('data-batch-action'); if(!a) return; var idx=Number(el.getAttribute('data-slot-index')), slot=getBatchSlot(idx); if(a==='firm'){slot.firmId=el.value; slot.stepIndex=slot.firmId?normalizeBatchStepIndex(null,getFirm(slot.firmId)):'';} if(a==='step') slot.stepIndex=normalizeBatchStepIndex(el.value,slot.firmId?getFirm(slot.firmId):null); batchUiState.slots[idx]=slot; saveBatchUiState(); renderBatchPanel(); }
+async function handleBatchClick(ev){ var el=ev.target&&ev.target.closest?ev.target.closest('[data-batch-action]'):null; if(!el) return; var a=el.getAttribute('data-batch-action'), idx=Number(el.getAttribute('data-slot-index')); if(a==='slot-count'){setBatchSlotCount(el.getAttribute('data-slot-count')); return;} var slot=getBatchSlot(idx), f=slot.firmId?getFirm(slot.firmId):null, si=normalizeBatchStepIndex(slot.stepIndex,f); if(!f&&a!=='clear') return; try{
+  if(a==='clear'){batchUiState.slots[idx]={firmId:'',stepIndex:''}; saveBatchUiState(); renderBatchPanel();}
+  else if(a==='copy-start'){copyText(getStepStartPrompt(si,f),el); await setStepStartedForFirm(si,f.id);}
+  else if(a==='copy-handoff') copyText(getStepHandoffPrompt(si,f),el);
+  else if(a==='open-tool') window.open(STEPS[si].tool==='perplexity'?'https://www.perplexity.ai':'https://chatgpt.com','_blank','noopener');
+  else if(a==='toggle-done') await setStepDoneStateForFirm(si,f.id,!f.quest.done[si]);
+  else if(a==='open-full'){openQuestDetail(f.id); switchTab('quest');}
+  else if(a==='save-chat'){var inp=document.querySelector('[data-batch-role="chat-url"][data-slot-index="'+idx+'"]'); if(await saveStepChatLinkValue(si,f.id,inp?inp.value:'')) toast('Chat-Link gespeichert ✓');}
+  else if(a==='open-chat') openStepChatLink(si,f.id);
+  else if(a==='copy-chat') copyStepChatLink(si,f.id,el);
+  else if(a==='import-handoff'){var ta=document.querySelector('[data-batch-role="handoff-json"][data-slot-index="'+idx+'"]'); var raw=ta?ta.value.trim():''; if(!raw){toast('Bitte Handoff-JSON einfügen.');return;} var r=await importQuestStepHandoffJson(raw,{firmId:f.id,stepIndex:si}); toast('Handoff importiert: '+STEPS[r.stepIndex].name+' ✓',5000); renderBatchPanel();}
+  }catch(e){toast('Batch-Aktion fehlgeschlagen: '+String(e.message||e),6500);}
 }
 
 function getNextStep(f) {
